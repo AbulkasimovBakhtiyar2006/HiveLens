@@ -3,7 +3,9 @@
 **A hive inspection agent that measures before it speaks.**
 
 [Open HiveLens on Railway](https://hivelens-production.up.railway.app/?mode=demo#welcome)
-— no installation or password is needed to explore saved analyses, photographs,
+· [Watch the demo on YouTube](https://www.youtube.com/watch?v=taEsdckX_h4)
+
+No installation or password is needed to explore saved analyses, photographs,
 benchmarks and published study histories. New analyses and shared edits require owner sign-in.
 
 HiveLens turns sticky-board and comb photographs into an inspection you can audit:
