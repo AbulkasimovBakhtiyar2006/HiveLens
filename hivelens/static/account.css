@@ -1,6 +1,18 @@
 /* Profile button, usage and cost page, settings page. Uses the tokens from app.css. */
 
 /* ── Profile button at the foot of the sidebar ──────────────────────── */
+/* Wrap by available content width, including when the sidebar is resized. */
+#usage-stats {
+  display: flex;
+  flex-wrap: wrap;
+}
+#usage-stats .kpi {
+  flex: 1 1 160px;
+}
+#usage-stats .kpi-value {
+  overflow-wrap: anywhere;
+}
+
 .profile-chip {
   display: flex;
   align-items: center;
@@ -66,6 +78,7 @@
   flex-direction: column;
   min-width: 0;
 }
+.profile-chip .settings-icon { display: grid; place-items: center; background: var(--surface-2); color: var(--nav-text-2); border-radius: 8px; }
 .profile-text strong,
 .profile-text small {
   overflow: hidden;
@@ -73,11 +86,11 @@
   white-space: nowrap;
 }
 .profile-text strong {
-  font-size: 0.93rem;
+  font-size: var(--type-body);
   font-weight: 600;
 }
 .profile-text small {
-  font-size: 0.8rem;
+  font-size: var(--type-xs);
   color: var(--nav-text-2);
 }
 
@@ -89,11 +102,11 @@
 }
 .estimate {
   max-width: 72ch;
-  font-size: 1rem;
+  font-size: var(--type-body);
   line-height: 1.6;
 }
 .estimate strong {
-  font-weight: 650;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .budget {
@@ -164,7 +177,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 0.86rem;
+  font-size: var(--type-sm);
   font-weight: 500;
 }
 .info-list {
@@ -174,7 +187,7 @@
   margin: 0;
 }
 .info-list dt {
-  font-size: 0.8rem;
+  font-size: var(--type-xs);
   color: var(--text-2);
 }
 .info-list dd {
@@ -201,4 +214,16 @@
   .price-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.info-list { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.info-list dd { overflow-wrap: anywhere; }
+.photo-row { flex-wrap: wrap; }
+
+/* Never squeeze sidebar sections: when farms and hives outgrow the window, the sidebar scrolls. */
+.sidebar > * {
+  flex-shrink: 0;
+}
+.layout-settings {
+  border-top: 1px solid var(--border);
 }

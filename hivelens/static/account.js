@@ -8,14 +8,15 @@ const ROLE_LABELS = { beekeeper: "Beekeeper", owner: "Apiary owner", inspector: 
 // The uploaded photo, or a plain yellow circle when there is none.
 function paintAvatar(el, profile) {
   const v = profile?.photo_version;
-  el.innerHTML = v ? `<img src="/api/profile_photo?v=${encodeURIComponent(v)}" alt="" />` : "";
+  el.innerHTML = v ? `<img src="/api/profile_photo?v=${encodeURIComponent(v)}" alt="" />` : el.id === "profile-avatar" ? icon("settings") : "";
+  el.classList.toggle("settings-icon", !v && el.id === "profile-avatar");
 }
 
 function renderProfileChip() {
   const p = state?.profile || {};
   paintAvatar($("profile-avatar"), p);
-  $("profile-name").textContent = p.name || "Set up your profile";
-  $("profile-sub").textContent = p.name ? [ROLE_LABELS[p.role], p.organisation].filter(Boolean).join(", ") || "Settings" : "Name, prices, budget";
+  $("profile-name").textContent = "Settings";
+  $("profile-sub").textContent = p.name || "Theme, profile & prices";
 }
 
 /* ── Money ───────────────────────────────────────────────────────────── */
@@ -33,7 +34,7 @@ let usageRequest = null;
 
 function costChart(daily) {
   const max = Math.max(...daily.map((d) => d.cost), 0);
-  if (!max) return '<p class="hint chart-empty">No paid calls in the last 30 days.</p>';
+  if (!max) return '<p class="hint chart-empty">Estimated cost is $0.00 for the last 30 days.</p>';
   const W = 720;
   const H = 150;
   const base = 120;
@@ -48,7 +49,7 @@ function costChart(daily) {
       }</g>`;
     })
     .join("");
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cost per day, last 30 days"><path class="grid-line" d="M0 ${base}H${W}"/>${bars}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Estimated cost per day, last 30 days"><path class="grid-line" d="M0 ${base}H${W}"/>${bars}</svg>`;
 }
 
 function usageHtml(u) {
@@ -57,46 +58,46 @@ function usageHtml(u) {
   const budget = u.budget || 0;
   const month = t.month.cost;
   const kpis =
-    kpi("This month", usd(month), `${count(t.month.calls)} model calls`) +
-    kpi("Today", usd(t.today.cost), `${count(t.today.calls)} model calls`) +
-    kpi("All time", usd(t.all.cost), u.tracking_since ? `Since ${new Date(u.tracking_since * 1000).toLocaleDateString()}` : "Nothing recorded yet") +
-    kpi("Per inspection", usd(u.per_inspection), u.inspections_priced ? `Average of ${u.inspections_priced} inspection${u.inspections_priced === 1 ? "" : "s"}` : "Run an inspection to measure") +
-    kpi("Monthly estimate", usd(proj.monthly_cost), `${proj.hives} hives, ${num(proj.inspections_per_month, 0)} inspections each`);
+    kpi("This month (est.)", usd(month), `${count(t.month.calls)} model calls`) +
+    kpi("Today (est.)", usd(t.today.cost), `${count(t.today.calls)} model calls`) +
+    kpi("All time (est.)", usd(t.all.cost), u.tracking_since ? `Since ${new Date(u.tracking_since * 1000).toLocaleDateString()}` : "Nothing recorded yet") +
+    kpi("Est. per inspection", usd(u.per_inspection), u.inspections_priced ? `Average of ${u.inspections_priced} inspection${u.inspections_priced === 1 ? "" : "s"}` : "Run an inspection to measure") +
+    kpi("Monthly projection", usd(proj.monthly_cost), `${proj.hives} hives, ${num(proj.inspections_per_month, 0)} inspections each`);
 
   const budgetBar = budget
     ? `<section class="panel budget">
-        <div class="budget-top"><strong>Monthly budget</strong><span>${esc(usd(month))} of ${esc(usd(budget))}</span></div>
+        <div class="budget-top"><strong>Monthly budget (estimated usage)</strong><span>${esc(usd(month))} of ${esc(usd(budget))}</span></div>
         <div class="budget-bar ${month > budget ? "over" : month > budget * 0.8 ? "near" : ""}"><i style="width:${Math.min(100, (month / budget) * 100).toFixed(1)}%"></i></div>
-        <p class="hint">${month > budget ? "Over budget this month." : `${esc(usd(budget - month))} left this month.`}</p>
+        <p class="hint">${month > budget ? "Estimated usage exceeds this month’s budget." : `${esc(usd(budget - month))} estimated budget remaining.`}</p>
       </section>`
     : "";
 
   const estimate =
     proj.monthly_cost != null
       ? `<p class="estimate">At <strong>${esc(usd(u.per_inspection))}</strong> per inspection, ${proj.hives} hives inspected ${num(proj.inspections_per_month, 0)} times a month cost about <strong>${esc(usd(proj.monthly_cost))}</strong> a month${budget ? `, against a budget of ${esc(usd(budget))}` : ""}.</p>`
-      : `<p class="estimate">The estimate appears after the first inspection is recorded: it uses what one real inspection cost.</p>`;
+      : `<p class="estimate">The estimate appears after the first inspection is recorded: it prices recorded model calls using the rates in Settings.</p>`;
 
   const models = u.by_model.length
     ? `<table class="table">
-        <thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Input tokens</th><th class="num">Cached</th><th class="num">Output tokens</th><th class="num">Cost</th></tr></thead>
+        <thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Input tokens</th><th class="num">Cached</th><th class="num">Output tokens</th><th class="num">Est. cost</th></tr></thead>
         <tbody>${u.by_model
           .map(
             (m) => `<tr><td><strong>${esc(modelLabel(m))}</strong> <span class="muted">${esc(m.model)}</span></td><td class="num">${count(m.calls)}</td><td class="num">${count(m.input_tokens)}</td><td class="num">${count(m.cached_tokens)}</td><td class="num">${count(m.output_tokens)}</td><td class="num strong">${esc(usd(m.cost))}</td></tr>`,
           )
           .join("")}</tbody>
       </table>`
-    : emptyState("No paid calls yet", "Calls are recorded from now on, each time an inspection or benchmark reaches the Meta API.");
+    : emptyState("No recorded calls yet", "Calls are recorded from now on, each time an inspection or benchmark reaches the Meta API.");
 
   const jobs = u.jobs.length
     ? `<table class="table">
-        <thead><tr><th>When</th><th>Run</th><th class="num">SAM 3.1 calls</th><th class="num">Muse Spark calls</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+        <thead><tr><th>When</th><th>Run</th><th class="num">SAM 3.1 calls</th><th class="num">Muse Spark calls</th><th class="num">Tokens</th><th class="num">Est. cost</th></tr></thead>
         <tbody>${u.jobs
           .map(
             (j) => `<tr><td class="muted">${esc(new Date(j.started * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }))}</td><td>${esc(j.label || (j.kind === "benchmark" ? "Benchmark" : "Inspection"))}</td><td class="num">${count(j.segmentation)}</td><td class="num">${count(j.reasoning)}</td><td class="num">${count(j.input_tokens + j.output_tokens)}</td><td class="num strong">${esc(usd(j.cost))}</td></tr>`,
           )
           .join("")}</tbody>
       </table>`
-    : '<p class="hint panel-note">Each inspection and benchmark run will be listed here with its cost.</p>';
+    : '<p class="hint panel-note">Each inspection and benchmark run will be listed here with its estimated cost.</p>';
 
   const p = u.prices;
   return `<div id="usage-stats" class="kpi-strip">${kpis}</div>
@@ -106,18 +107,18 @@ function usageHtml(u) {
       <div class="panel-body">${estimate}</div>
     </section>
     <section class="panel">
-      <header class="panel-head"><div class="panel-title-group"><h2>Cost per day</h2><span class="sub-text">Last 30 days</span></div></header>
+      <header class="panel-head"><div class="panel-title-group"><h2>Estimated cost per day</h2><span class="sub-text">Last 30 days</span></div></header>
       <div class="chart">${costChart(u.daily)}</div>
     </section>
     <section class="panel"><header class="panel-head"><h2>By model</h2></header><div class="table-wrap">${models}</div></section>
     <section class="panel"><header class="panel-head"><h2>Recent runs</h2></header><div class="table-wrap">${jobs}</div></section>
     <section class="panel">
-      <header class="panel-head"><h2>Saved by the cache</h2></header>
+      <header class="panel-head"><h2>Cached analysis</h2></header>
       <div class="panel-body prose">
-        <p>${count(u.cache.sam)} SAM 3.1 answers and ${count(u.cache.muse)} Muse Spark answers are stored on this computer. Running the same photos again reuses them for free${
-          u.cache.sam_value ? `, which is about ${esc(usd(u.cache.sam_value))} of SAM 3.1 requests at the current price` : ""
-        }.</p>
-        <p class="hint">Prices in use: Muse Spark ${esc(usd(p.muse.input_per_m))} input, ${esc(usd(p.muse.cached_per_m))} cached input and ${esc(usd(p.muse.output_per_m))} output per million tokens. SAM 3.1 ${esc(usd(p.sam.per_request))} per request. Reasoning tokens are billed as output.</p>
+        <p>${count(u.cache.sam)} SAM 3.1 answers and ${count(u.cache.muse)} Muse Spark answers are stored on this computer. Matching analysis requests can reuse these results. Report generation still makes new API calls. The stored SAM results represent an estimated request value${
+          u.cache.sam_value ? ` of ${esc(usd(u.cache.sam_value))} at the configured SAM rate` : " of $0.00"
+        }; this is not a measured saving.</p>
+        <p class="hint">Configured estimate rates (SAM defaults to a placeholder): Muse Spark ${esc(usd(p.muse.input_per_m))} input, ${esc(usd(p.muse.cached_per_m))} cached input and ${esc(usd(p.muse.output_per_m))} output per million tokens. SAM 3.1 ${esc(usd(p.sam.per_request))} per request. Reasoning tokens are billed as output.</p>
       </div>
     </section>`;
 }
@@ -237,3 +238,29 @@ $("photo-remove").addEventListener("click", () =>
     toast("Profile photo removed.");
   }),
 );
+
+/* ── Layout: Atlas or Classic ────────────────────────────────────────── */
+// The choice is stored in this browser and applied by the script in <head> before the page paints.
+const activeLayout = () => {
+  const l = document.documentElement.dataset.layout;
+  return !l ? "classic" : l === "atlas" ? "atlas" : null; // other layouts are comparison previews
+};
+
+function markLayoutChoice() {
+  const current = activeLayout();
+  document.querySelectorAll("[data-layout-choice]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.layoutChoice === current)));
+}
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-layout-choice]");
+  if (!button) return;
+  const choice = button.dataset.layoutChoice;
+  if (choice === activeLayout()) return;
+  store.set("layout", choice);
+  const url = new URL(location.href);
+  url.searchParams.delete("layout"); // a preview link would override the saved choice
+  location.replace(url.toString());
+  if (url.toString() === location.href) location.reload();
+});
+
+markLayoutChoice();

@@ -193,6 +193,22 @@ zero-shot segmentation model with verified reasoning.
 
 ## Roadmap
 
+Camera capture is available now in **New inspection → Photos → Camera / video**.
+Use a device camera, open a local video, or try the bundled recorded demo.
+Capture a still, review/retake it, add it as a sticky board or frame side, then
+run the normal inspection. Capture source, time, resolution and video position
+are saved with the report and exported JSON. Camera preview stays local;
+accepted photos are uploaded only when the inspection is submitted.
+The camera stops when leaving the view or hiding the tab. Browser camera access
+requires HTTPS or localhost. This is still-frame analysis, not video tracking
+or unattended scheduled monitoring.
+
+The bundled comb close-up is **Queen honey bee laying eggs**, Ask a Biologist,
+Arizona State University, CC BY-SA 3.0. It is clearly labelled recorded demo
+footage, not the selected colony. An inspection containing a demo capture stays
+in history but is excluded from the colony's status, trends and metrics CSV.
+See [media attribution](hivelens/static/comb-demo-LICENSE.md).
+
 - A fixed camera under the board for automatic daily counts.
 - Inter-apiary anonymised telemetry sharing for regional mite-pressure maps.
 - Video of a whole frame with SAM 3.1 tracking instead of single photos.

@@ -142,7 +142,7 @@ def build_apiary_overview() -> dict:
         placed += [(farm_id, i, cols, h) for i, h in enumerate(members)]
 
     for farm_id, idx, cols, h in placed:
-        insps = store.inspections(h["id"])
+        insps = [record for record in store.inspections(h["id"]) if not record.get("demo_capture")]
         latest = insps[-1] if insps else None
         prev = insps[-2] if len(insps) >= 2 else None
 
@@ -444,6 +444,7 @@ def _run_inspection_job(job_id: str, payload: dict) -> None:
             note=note,
             use_agent=use_agent,
             board_refine=board_refine,
+            capture_sources=payload.get("capture_sources") or {},
             progress=on_progress,
             on_event=on_event,
         )
@@ -528,6 +529,27 @@ def _validate_inspection_payload(body: dict) -> None:
         raise ValueError("A selected frame sample is no longer available.")
     if not isinstance(body.get("note", ""), str) or len(body.get("note", "")) > 4000:
         raise ValueError("Keep field notes below 4,000 characters.")
+    captures = body.get("capture_sources", {})
+    allowed_photos = ({"board"} if body.get("board_b64") else set()) | {f"frame_{i + 1}" for i in range(len(photos))}
+    if not isinstance(captures, dict) or not set(captures) <= allowed_photos:
+        raise ValueError("Capture sources must refer to uploaded photos.")
+    for capture in captures.values():
+        if not isinstance(capture, dict) or set(capture) != {"source", "name", "captured_at", "width", "height", "video_seconds"}:
+            raise ValueError("Invalid capture source.")
+        if capture["source"] not in ("camera", "video", "demo"):
+            raise ValueError("Unknown capture source.")
+        if not isinstance(capture["name"], str) or len(capture["name"]) > 200:
+            raise ValueError("Invalid capture name.")
+        try:
+            from datetime import datetime
+            datetime.fromisoformat(capture["captured_at"].replace("Z", "+00:00"))
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError("Invalid capture time.") from None
+        if any(type(capture[key]) is not int or not 1 <= capture[key] <= 4096 for key in ("width", "height")):
+            raise ValueError("Invalid capture dimensions.")
+        seconds = capture["video_seconds"]
+        if seconds is not None and (type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0):
+            raise ValueError("Invalid video position.")
 
 
 class HiveLensHandler(BaseHTTPRequestHandler):
@@ -563,8 +585,8 @@ class HiveLensHandler(BaseHTTPRequestHandler):
         path = parsed.path
         query = dict(urllib.parse.parse_qsl(parsed.query))
 
-        if path in ("/", "/index.html"):
-            html = UI_PATH.read_bytes()
+        if path in ("/", "/index.html", "/designs", "/designs/"):
+            html = (UI_PATH.with_name("designs.html") if path.rstrip("/") == "/designs" else UI_PATH).read_bytes()
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(html)))
@@ -578,7 +600,13 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             assets = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "mark.svg": "image/svg+xml",
                       "farm.css": "text/css; charset=utf-8", "farm.js": "text/javascript; charset=utf-8",
                       "account.css": "text/css; charset=utf-8", "account.js": "text/javascript; charset=utf-8",
-                      "yard.js": "text/javascript; charset=utf-8"}
+                      "camera.js": "text/javascript; charset=utf-8", "comb-demo.mp4": "video/mp4",
+                      "yard.js": "text/javascript; charset=utf-8",
+                      "layouts.css": "text/css; charset=utf-8", "layouts.js": "text/javascript; charset=utf-8",
+                      "layouts-next.css": "text/css; charset=utf-8", "layouts-next.js": "text/javascript; charset=utf-8",
+                      **{f"design-previews/{key}.jpg": "image/jpeg" for key in
+                         ("focus", "registry", "panorama", "notebook", "triage", "fieldbook",
+                          "board", "atlas", "chronicle", "workbench", "folio", "dispatch")}}
             name = path.removeprefix("/static/")
             # Weather icons (Meteocons, MIT): only plain names inside static/weather/.
             if name.startswith("weather/") and _safe_part(name.removeprefix("weather/")) and name.endswith(".svg") \
@@ -588,13 +616,41 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "not found"}, 404)
                 return
             content = (STATIC_DIR / name).read_bytes()
-            self.send_response(200)
+            start, end, status = 0, len(content) - 1, 200
+            if name == "comb-demo.mp4" and self.headers.get("Range"):
+                try:
+                    unit, span = self.headers["Range"].split("=", 1)
+                    first, last = span.split("-", 1)
+                    if unit != "bytes" or "," in span or not (first or last):
+                        raise ValueError
+                    if first:
+                        start = int(first)
+                        end = min(int(last), end) if last else end
+                    else:
+                        suffix = int(last)
+                        if suffix <= 0:
+                            raise ValueError
+                        start = max(0, len(content) - suffix)
+                    if start < 0 or start > end:
+                        raise ValueError
+                    status = 206
+                except ValueError:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{len(content)}")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+            self.send_response(status)
             self.send_header("Content-Type", assets[name])
-            self.send_header("Content-Length", str(len(content)))
+            if name == "comb-demo.mp4":
+                self.send_header("Accept-Ranges", "bytes")
+                if status == 206:
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{len(content)}")
+            self.send_header("Content-Length", str(end - start + 1))
             self.send_header("Cache-Control", "no-cache")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
-            self.wfile.write(content)
+            self.wfile.write(content[start:end + 1])
             return
 
         if path == "/api/settings":

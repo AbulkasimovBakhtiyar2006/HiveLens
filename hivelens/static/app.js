@@ -8,6 +8,11 @@ const esc = (value) =>
 
 // Optical family: 24 × 24 grid, 1.75-unit strokes, rounded ends.
 const ICONS = {
+  compass: '<circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5Z"/>',
+  records: '<path d="M8 3h9a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM3 7h4m-4 5h4m-4 5h4m4-9h5m-5 4h5m-5 4h3"/>',
+  book: '<path d="M12 5v15M3 4h5a4 4 0 0 1 4 2 4 4 0 0 1 4-2h5v15h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3Z"/>',
+  wallet: '<path d="M20 8V6a2 2 0 0 0-2-2H6a3 3 0 0 0 0 6h14v10H6a3 3 0 0 1-3-3V7m17 6h-5v4h5"/>',
+  settings: '<path d="M4 7h3m4 0h9M4 17h9m4 0h3"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/>',
   scan: '<path d="M8 4H6a2 2 0 0 0-2 2v2m12-4h2a2 2 0 0 1 2 2v2M4 16v2a2 2 0 0 0 2 2h2m8 0h2a2 2 0 0 0 2-2v-2M8 12h8"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   search: '<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 4.5 4.5"/>',
@@ -36,6 +41,7 @@ const hydrateIcons = (root = document) =>
   });
 
 const VIEWS = {
+  welcome: "Start here",
   overview: "Overview",
   inspect: "New inspection",
   history: "Hive records",
@@ -47,6 +53,23 @@ const VIEWS = {
 const STATUS = { good: "Normal", watch: "Watch", act: "Critical", unknown: "No data" };
 const statusOf = (s) => (Object.hasOwn(STATUS, s) ? s : "unknown");
 const badge = (s) => `<span class="badge ${statusOf(s)}">${STATUS[statusOf(s)]}</span>`;
+
+// The overall status is the most severe measured dimension, not just varroa.
+function statusReasons(levels = {}, metrics = {}) {
+  const order = { act: 3, watch: 2, good: 1, unknown: 0 };
+  return [
+    ["varroa", "Mites", metrics.mites_per_day, "mites/day"],
+    ["stores", "Stores", metrics.stores_weeks, "weeks remaining"],
+    ["brood", "Brood", metrics.brood_total_pct, "% visible area"],
+  ].map(([key, label, value, unit]) => ({
+    level: statusOf(levels[key]),
+    text: `${label}: ${value == null ? "not measured" : `${num(value)} ${unit}`}`,
+  })).sort((a, b) => order[b.level] - order[a.level]);
+}
+function primaryReason(h) {
+  return statusReasons(h.levels, h).filter((r) => r.level === h.overall && r.level !== "unknown")
+    .map((r) => r.text).join(" · ") || (h.overall === "unknown" ? "No inspection data" : "Review latest inspection.");
+}
 
 const num = (value, digits = 1) =>
   value == null || !Number.isFinite(Number(value))
@@ -106,6 +129,22 @@ function applyTheme(theme) {
   store.set("corp_theme", t);
 }
 
+function applyPalette(value, updateUrl = false) {
+  const palette = value === "forest" ? "forest" : "honey";
+  document.documentElement.dataset.palette = palette;
+  store.set("palette", palette);
+  document.querySelectorAll("[data-palette-choice]").forEach((button) => {
+    button.setAttribute("aria-pressed", button.dataset.paletteChoice === palette);
+  });
+  const favicon = document.querySelector('link[rel="icon"]');
+  if (favicon) favicon.href = "/static/mark.svg?v=5";
+  if (updateUrl) {
+    const url = new URL(location.href);
+    url.searchParams.set("palette", palette);
+    history.replaceState(null, "", url);
+  }
+}
+
 /* ── State ───────────────────────────────────────────────────────────── */
 let state = null;
 let view = "overview";
@@ -119,6 +158,7 @@ let historyHive = null;
 let selectedRecord = null;
 let boardFile = null;
 let frameFiles = [];
+const captureSources = new WeakMap();
 let previewUrls = [];
 let previewGeneration = 0;
 let activeJob = null;
@@ -178,6 +218,11 @@ const emptyState = (title, text, action = "") =>
   `<div class="empty">${icon("hive")}<h3>${esc(title)}</h3><p>${esc(text)}</p>${action}</div>`;
 
 /* ── Routing ─────────────────────────────────────────────────────────── */
+function entryView(requested, welcomed) {
+  if (!welcomed && (!requested || requested === "overview")) return "welcome";
+  return Object.hasOwn(VIEWS, requested) ? requested : "overview";
+}
+
 function go(next) {
   if (location.hash === `#${next}`) route();
   else location.hash = next;
@@ -186,7 +231,12 @@ function go(next) {
 function route() {
   const next = location.hash.slice(1);
   if (next === "main") return;
+  if (view === "welcome" && next !== "welcome") {
+    store.set("welcomed", true);
+    if (document.documentElement.dataset.layout === "atlas") store.set("atlas-welcomed", true);
+  }
   view = Object.hasOwn(VIEWS, next) ? next : "overview";
+  document.documentElement.dataset.view = view;
   for (const key of Object.keys(VIEWS)) {
     $(`view-${key}`).hidden = key !== view;
     const link = document.querySelector(`[data-nav="${key}"]`);
@@ -202,12 +252,45 @@ function route() {
 function renderView() {
   if (!state) return;
   if (typeof renderProfileChip === "function") renderProfileChip(); // account.js
+  if (view === "welcome") renderWelcome();
   if (view === "usage" && typeof renderUsage === "function") renderUsage();
   if (view === "settings" && typeof renderSettings === "function") renderSettings();
   if (view === "overview") renderOverview();
   if (view === "inspect") updateSummary();
   if (view === "history") loadHistory();
   if (view === "benchmark") renderBenchmark();
+}
+
+let welcomeExample = null;
+let welcomeLoading = false;
+async function renderWelcome() {
+  if (welcomeExample || welcomeLoading) return;
+  const candidates = hives().filter((h) => !isSynthetic(h) && h.inspection_count > 0);
+  welcomeLoading = true;
+  try {
+    for (const hive of candidates) {
+      const data = await api(`/api/hive/${encodeURIComponent(hive.id)}`);
+      const rec = [...data.inspections].reverse().find((r) => !r.synthetic && !r.demo_capture && r.report && Object.keys(r.files || {}).some((key) => key.endsWith("_overlay")));
+      if (!rec) continue;
+      const files = rec.files;
+      const overlay = files.board_overlay ? "board_overlay" : Object.keys(files).find((key) => key.endsWith("_overlay"));
+      const original = files[overlay.replace(/_overlay$/, "")];
+      const url = (name) => `/api/file/${encodeURIComponent(hive.id)}/${encodeURIComponent(rec.id)}/${encodeURIComponent(name)}?max_side=720`;
+      const photo = (name, label) => `<div><img src="${esc(url(name))}" alt="${esc(label)}" decoding="async"><span>${esc(label)}</span></div>`;
+      $("welcome-proof").innerHTML = (original ? photo(original, "Original photo") : "") + photo(files[overlay], "Measured evidence");
+      $("welcome-proof-caption").textContent = `${displayName(hive)} · ${dateLabel(rec.date)} · Saved photo analysis`;
+      welcomeExample = { hiveId: hive.id, recordId: rec.id };
+      $("welcome-example").disabled = false;
+      $("welcome-example-hint").textContent = "A saved inspection, ready to explore. No upload needed.";
+      return;
+    }
+    $("welcome-example-hint").textContent = "No saved photo analysis yet. Try your own photos or explore the benchmark.";
+    $("welcome-proof").innerHTML = '<p class="muted">The first completed photo analysis will appear here.</p>';
+  } catch {
+    $("welcome-example-hint").textContent = "Could not load the example. Reopen Start here to retry, or explore the workspace.";
+  } finally {
+    welcomeLoading = false;
+  }
 }
 
 async function loadState() {
@@ -320,7 +403,7 @@ function renderFarmNav() {
         ? `<ul class="farm-hives">${members
             .map(
               (h) => `<li><button type="button" class="farm-hive" data-hive="${esc(h.id)}" data-destination="history" aria-current="${h.id === selectedHive}">
-                <i class="dot ${statusOf(h.overall)}"></i><span class="farm-name">${esc(shortName(h))}</span><span class="farm-count">${h.mites_per_day != null ? num(h.mites_per_day) : "–"}</span>
+                <i class="dot ${statusOf(h.overall)}"></i><span class="farm-name">${esc(shortName(h))}${isSynthetic(h) ? ' <small class="nav-demo">Demo</small>' : ""}</span><span class="farm-count">${h.mites_per_day != null ? num(h.mites_per_day) : "–"}</span>
               </button></li>`,
             )
             .join("")}</ul>`
@@ -340,44 +423,29 @@ function fillFarmSelect(select, current) {
 
 // The yard maps (view and layout editor) live in yard.js.
 
-// The top bar says where you are (farm / hive / page) and shows the facts that matter there:
-// for a farm its hives, alerts and the weather now; for a hive its status and latest numbers.
-// Actions live in each page's own header, so nothing here repeats a page button.
+// Hive context for records and inspections. Overview already has its own title and summary.
 function renderTopbar() {
   if (!$("topbar-crumbs")) return;
-  const fact = (text, tone = "", go = "") =>
-    go
-      ? `<button type="button" class="fact${tone ? ` ${tone}` : ""}" data-fact="${go}">${text}</button>`
-      : `<span class="fact${tone ? ` ${tone}` : ""}">${text}</span>`;
-  const farm = selectedFarm === "all" ? null : farmByKey(selectedFarm);
+  const fact = (text, tone = "") =>
+    `<span class="fact${tone ? ` ${tone}` : ""}">${text}</span>`;
   const hive = state ? hives().find((h) => h.id === selectedHive) : null;
-  let crumbs = [VIEWS[view]];
+  let crumbs = [];
   let facts = "";
-  if (view === "overview" && state) {
-    crumbs = [farm ? farm.name : "All farms", "Overview"];
-    const list = hivesInView();
-    const n = (s) => list.filter((h) => h.overall === s).length;
-    facts += fact(`${list.length} hive${list.length === 1 ? "" : "s"}`);
-    if (n("act")) facts += fact(`${n("act")} critical`, "act", "act");
-    if (n("watch")) facts += fact(`${n("watch")} to watch`, "watch", "watch");
-    if (!n("act") && !n("watch") && list.length) facts += fact("All normal", "good");
-    const now = farm?.id && typeof weatherCache !== "undefined" ? weatherCache[farm.id]?.data?.current : null;
-    if (now) {
-      facts += fact(`<img src="/static/weather/${weatherIconName(now)}.svg" width="22" height="22" alt="" />${num(now.temp_c, 0)} °C, ${esc(now.text.toLowerCase())}, wind ${num(now.wind_ms)} m/s`, "", "weather");
-      facts += fact(`Bee flight: ${FLIGHT[now.flight.level].toLowerCase()}`, now.flight.level === "good" ? "good" : now.flight.level === "limited" ? "watch" : "");
-    }
-  } else if (["history", "inspect"].includes(view) && hive) {
-    crumbs = [farmName(hive.farm_id), shortName(hive), VIEWS[view]];
+  if (["history", "inspect"].includes(view) && hive) {
+    crumbs = [farmName(hive.farm_id), shortName(hive)];
     const s = statusOf(hive.overall);
-    facts += fact(STATUS[s], s === "unknown" ? "" : s);
+    if (isSynthetic(hive)) facts += fact("Demo data");
+    facts += fact(`Latest: ${STATUS[s]}`, s === "unknown" ? "" : s);
     if (hive.mites_per_day != null) facts += fact(`${num(hive.mites_per_day)} mites/day`);
     if (hive.stores_weeks != null) facts += fact(`${num(hive.stores_weeks)} weeks of stores`);
     facts += fact(hive.latest_date ? `Inspected ${esc(dateLabel(hive.latest_date))}` : "Not inspected yet");
   }
   $("topbar-crumbs").innerHTML = crumbs
-    .map((c, i) => (i === crumbs.length - 1 ? `<strong aria-current="page">${esc(c)}</strong>` : `<span>${esc(c)}</span><span class="crumb-sep" aria-hidden="true">/</span>`))
+    .map((c, i) => (i === crumbs.length - 1 ? `<strong>${esc(c)}</strong>` : `<span>${esc(c)}</span><span class="crumb-sep" aria-hidden="true">/</span>`))
     .join("");
   $("topbar-facts").innerHTML = facts;
+  $("topbar-crumbs").hidden = !crumbs.length;
+  $("topbar").hidden = !crumbs.length && !facts;
 }
 
 function renderOverview() {
@@ -387,8 +455,12 @@ function renderOverview() {
   renderTopbar();
   const all = hivesInView();
   const count = (s) => all.filter((h) => h.overall === s).length;
-  const measuredCount = all.filter((h) => !isSynthetic(h)).length;
-  const driftRiskCount = all.filter((h) => h.drift_risk_from?.length && h.overall !== "act").length;
+  const measuredCount = all.filter((h) => !isSynthetic(h) && h.latest_date).length;
+  const demoCount = all.filter(isSynthetic).length;
+  const sourceNote = (level) => `${all.filter((h) => h.overall === level && isSynthetic(h)).length} demo included`;
+  const exposed = all.filter((h) => h.drift_risk_from?.length && h.overall !== "act");
+  const byId = new Map(hives().map((h) => [h.id, h]));
+  const demoExposure = exposed.filter((h) => isSynthetic(h) || h.drift_risk_from.some((source) => isSynthetic(byId.get(source.id) || {}))).length;
   const farm = selectedFarm === "all" ? null : farmByKey(selectedFarm);
   const farmCount = farms().filter((f) => f.id).length;
   $("overview-title").textContent = farm ? farm.name : "All farms";
@@ -397,20 +469,29 @@ function renderOverview() {
     : `${farmCount} farm${farmCount === 1 ? "" : "s"}, ${hives().length} hives. Latest inspection of each hive.`;
 
   $("overview-stats").innerHTML =
-    kpi("Hives", all.length, `${measuredCount} measured, ${all.length - measuredCount} demo`, "") +
-    kpi("Normal", count("good"), "Below 3 mites/day", "good") +
-    kpi("Watch", count("watch"), "3–10 mites/day", "watch") +
-    kpi("Critical", count("act"), "10+ mites/day", "act") +
-    kpi("Drift exposure", driftRiskCount, "Within 4 m of a hive with 10+ mites/day", "watch");
+    kpi("Hives", all.length, `${measuredCount} measured, ${demoCount} demo, ${all.length - measuredCount - demoCount} uninspected`, "") +
+    kpi("Normal", count("good"), `Measured checks normal · ${sourceNote("good")}`, "good") +
+    kpi("Watch", count("watch"), `At least one check to watch · ${sourceNote("watch")}`, "watch") +
+    kpi("Critical", count("act"), `At least one critical check · ${sourceNote("act")}`, "act") +
+    kpi("Drift exposure", exposed.length, `${demoExposure} with demo data · Within 4 m of a high-mite hive`, "watch");
+
+  if (document.documentElement?.dataset?.layout === "atlas") {
+    $("overview-stats").innerHTML =
+      kpi("Hives", all.length, farm ? "On this farm" : `${farmCount} farms`, "") +
+      kpi("Measured hives", measuredCount, "Hives with saved photo analyses", "") +
+      kpi("Demo hives", demoCount, "Simulated hives for exploring", "");
+    $("atlas-demo-note").hidden = demoCount === 0;
+    $("atlas-demo-note").innerHTML = `<div><strong>Explore the demo apiary</strong><p>${demoCount} example ${demoCount === 1 ? "hive illustrates" : "hives illustrate"} different conditions. Their readings and alerts are simulated; photo analyses are labelled Measured.</p></div><a href="#welcome">Quick introduction →</a>`;
+  }
 
   const urgent = all.filter((h) => h.overall === "act").sort((a, b) => Number(isSynthetic(a)) - Number(isSynthetic(b)));
   $("attention").hidden = !urgent.length;
   $("attention").innerHTML = urgent.length
-    ? `<div class="attention-head">${icon("alert")}Requires action (${urgent.length})</div>` +
+    ? `<div class="attention-head">${icon("alert")}${document.documentElement?.dataset?.layout === "atlas" ? "Inspection review" : "Requires action"} (${urgent.length})</div>` +
       urgent
         .map(
           (h) =>
-            `<button class="attention-row" type="button" data-hive="${esc(h.id)}" data-destination="history"><strong>${esc(displayName(h))}</strong><span>${esc(h.flags?.[0] || "Review latest inspection.")}</span>${icon("arrow")}</button>`,
+            `<button class="attention-row" type="button" data-hive="${esc(h.id)}" data-destination="history"><strong>${esc(displayName(h))}${isSynthetic(h) ? ' <small class="tag demo">Demo</small>' : ""}</strong><span>${esc(primaryReason(h))}</span>${icon("arrow")}</button>`,
         )
         .join("")
     : "";
@@ -419,7 +500,7 @@ function renderOverview() {
   if (typeof renderFarmConditions === "function") renderFarmConditions(); // farm.js
 
   const filters = [
-    ["all", "All", all.length],
+    ["all", "All hives", all.length],
     ["act", "Critical", count("act")],
     ["watch", "Watch", count("watch")],
     ["good", "Normal", count("good")],
@@ -438,13 +519,18 @@ function renderHiveGrid() {
   const all = hivesInView();
   const query = $("hive-search").value.toLocaleLowerCase().trim();
   const source = $("source-filter").value;
-  const list = all
+  const matching = all
     .filter(
       (h) =>
         (!query || `${h.name} ${h.location} ${farmName(h.farm_id)}`.toLocaleLowerCase().includes(query)) &&
-        (statusFilter === "all" || statusOf(h.overall) === statusFilter) &&
         (source === "all" || (source === "synthetic" ? isSynthetic(h) : !isSynthetic(h))),
-    )
+    );
+  document.querySelectorAll("#status-filter button").forEach((button) => {
+    const key = button.dataset.filter;
+    button.querySelector(".n").textContent = key === "all" ? matching.length : matching.filter((h) => statusOf(h.overall) === key).length;
+    button.setAttribute("aria-pressed", statusFilter === key);
+  });
+  const list = matching.filter((h) => statusFilter === "all" || statusOf(h.overall) === statusFilter)
     .sort((a, b) => {
       const synA = isSynthetic(a);
       const synB = isSynthetic(b);
@@ -453,9 +539,12 @@ function renderHiveGrid() {
     });
 
   $("hive-grid").innerHTML = list.map(hiveRow).join("");
+  $("hive-table-wrap").hidden = !list.length;
+  $("hive-result-count").textContent = `${list.length} of ${all.length} shown`;
+  $("clear-hive-filters").hidden = !query && source === "all" && statusFilter === "all";
   $("hive-empty").hidden = list.length > 0;
   $("hive-empty").innerHTML = all.length
-    ? `${icon("search")}<h3>No hives match</h3><p>Clear the search or change the filters.</p>`
+    ? `${icon("search")}<h3>No hives match</h3><p>Try another status or clear your filters.</p>`
     : `${icon("hive")}<h3>No hives yet</h3><p>Add a hive to start recording inspections.</p><button class="btn primary sm" type="button" data-add-hive>${icon("plus")}Add hive</button>`;
 }
 
@@ -470,8 +559,8 @@ function hiveRow(h) {
   return `<tr class="${syn ? "" : "measured-row"}">
     <td class="strong"><a href="#history" data-hive="${esc(h.id)}" data-destination="history" style="text-decoration:none">${esc(displayName(h))}</a></td>
     <td class="muted col-farm">${esc(farmName(h.farm_id))}</td>
-    <td>${syn ? '<span class="tag demo">Demo data</span>' : '<span class="tag measured">Measured</span>'}</td>
-    <td>${badge(s)}</td>
+    <td>${syn ? '<span class="tag demo">Demo data</span>' : h.latest_date ? '<span class="tag measured">Measured</span>' : '<span class="tag">No inspection</span>'}</td>
+    <td>${badge(s)}${["act", "watch"].includes(s) ? `<small class="status-reason">${esc(primaryReason(h))}</small>` : ""}</td>
     <td class="num strong">${h.mites_per_day != null ? `${num(h.mites_per_day)} /d` : "—"}</td>
     <td class="num">${delta}</td>
     <td class="num">${h.honey_kg_hive_est != null ? `${num(h.honey_kg_hive_est)} kg` : "—"}</td>
@@ -520,6 +609,32 @@ function restoreDraft() {
 
 const checkedFrameSamples = () => [...document.querySelectorAll(".frame-sample:checked")].map((el) => el.value);
 
+function inspectionReadiness() {
+  if (!state) return "Loading inspection settings…";
+  if (activeJob || startingJob) return "An analysis is running. Wait for it to finish.";
+  if (!state.has_api_key) return "Add MODEL_API_KEY to .env to run inspections.";
+  if (!state.hives.some((h) => h.id === selectedHive)) return "Choose a hive first.";
+  if (!$('inspection-date').validity.valid) return "Choose a valid inspection date.";
+  if (!$('inspection-days').validity.valid) return "Enter 0.5–30 days in steps of 0.5.";
+  if (!$('inspection-frames').validity.valid) return "Enter a whole number of frames from 1 to 40.";
+  const frames = frameFiles.length + checkedFrameSamples().length;
+  if (frames > 8) return "Choose up to 8 frame photos.";
+  if (!boardFile && !$('board-sample').value && !frames) return "Add a board photo or at least one frame.";
+  return "";
+}
+
+function timingKey() {
+  return JSON.stringify([Boolean(boardFile || $('board-sample').value), frameFiles.length + checkedFrameSamples().length,
+    $('inspection-depth').value, $('inspection-agent').checked]);
+}
+function timingHint() {
+  const samples = store.get("inspection-times", []).filter((r) => r.key === timingKey() && r.ms > 0);
+  if (!samples.length) return "Duration unknown until the first comparable run.";
+  const minutes = samples.map((r) => Math.max(1, Math.ceil(r.ms / 60000)));
+  const low = Math.min(...minutes), high = Math.max(...minutes);
+  return `Previous ${samples.length} similar run${samples.length === 1 ? "" : "s"}: ${low === high ? `about ${low}` : `${low}–${high}`} min. Browser-local history; photo detail, cache and API load can change this.`;
+}
+
 function updateSummary() {
   if (!state) return;
   const sample = $("board-sample").value;
@@ -527,19 +642,17 @@ function updateSummary() {
   const hive = state.hives.find((h) => h.id === selectedHive);
   const row = (label, value, cls = "") => `<li><span>${label}</span><b class="${cls}" title="${esc(value)}">${esc(value)}</b></li>`;
   $("inspect-summary").innerHTML =
-    row("Hive", hive ? displayName(hive) : "Not chosen", hive ? "" : "missing") +
+    row("Hive", hive ? `${displayName(hive)}${isSynthetic(hive) ? " (Demo)" : ""}` : "Not chosen", hive ? "" : "missing") +
     row("Date", dateLabel($("inspection-date").value)) +
     row("Sticky board", boardFile ? boardFile.name : sample ? sample : "None", boardFile || sample ? "ok" : "missing") +
     row("Frames", frames ? `${frames} image${frames === 1 ? "" : "s"}` : "None", frames ? "ok" : "missing") +
     row("Board reading", $("inspection-depth").value === "thorough" ? "Thorough" : "Fast") +
     row("Report", $("inspection-agent").checked ? "On" : "Off");
-  let hint = "";
-  if (!state.has_api_key) hint = "Add MODEL_API_KEY to .env to run inspections.";
-  else if (!hive) hint = "Add a hive first.";
-  else if (!boardFile && !sample && !frames) hint = "Add a board photo or at least one frame.";
-  else if (activeJob) hint = "An inspection is running.";
-  else hint = "Ready to run.";
-  $("run-hint").textContent = hint;
+  const reason = inspectionReadiness();
+  $("run-inspection").disabled = Boolean(reason);
+  const hasDemoCapture = [boardFile, ...frameFiles].some((file) => file && captureSources.get(file)?.source === "demo");
+  $("run-hint").textContent = reason || (hasDemoCapture ? "Demo analysis: saved in history, excluded from hive status and trends." : "Ready to run.");
+  $("timing-hint").textContent = timingHint();
 }
 
 function validateFiles(files) {
@@ -565,10 +678,13 @@ function setFiles(kind, files) {
       $("board-sample-info").textContent = "";
     } else frameFiles = frames;
     renderPreviews();
+    return true;
   } catch (e) {
     toast(e.message, true);
+    return false;
+  } finally {
+    $(`${kind}-file`).value = "";
   }
-  $(`${kind}-file`).value = "";
 }
 
 function renderPreviews() {
@@ -641,7 +757,6 @@ function readBase64(file) {
 
 function updateRunButtons() {
   const disabled = Boolean(activeJob || startingJob || !state?.has_api_key);
-  $("run-inspection").disabled = disabled;
   $("run-benchmark").disabled = disabled;
   updateSummary();
 }
@@ -650,6 +765,8 @@ async function startInspection(event) {
   event.preventDefault();
   if (activeJob || startingJob) return;
   if (!$("inspection-form").reportValidity()) return;
+  const reason = inspectionReadiness();
+  if (reason) return toast(reason, true);
   if (!selectedHive) return toast("Add a hive before you run an inspection.", true);
   const sample = $("board-sample").value;
   const frameSamples = checkedFrameSamples();
@@ -662,6 +779,7 @@ async function startInspection(event) {
   const hiveId = selectedHive;
   const files = [...frameFiles];
   const board = boardFile;
+  const timing = { startedAt: Date.now(), timingKey: timingKey() };
   const payload = {
     hive_id: hiveId,
     date: $("inspection-date").value,
@@ -672,6 +790,9 @@ async function startInspection(event) {
     use_agent: $("inspection-agent").checked,
     board_sample: sample || null,
     frame_samples: frameSamples,
+    capture_sources: Object.fromEntries([
+      ["board", board], ...files.map((file, i) => [`frame_${i + 1}`, file]),
+    ].filter(([, file]) => file && captureSources.has(file)).map(([key, file]) => [key, captureSources.get(file)])),
   };
   try {
     toast("Uploading photos…");
@@ -680,7 +801,7 @@ async function startInspection(event) {
     for (const file of files) payload.frames_b64.push(await readBase64(file));
     const result = await api("/api/inspect", payload);
     $("inspection-result").innerHTML = "";
-    attachJob({ id: result.job_id, kind: "inspection", hiveId });
+    attachJob({ id: result.job_id, kind: "inspection", hiveId, ...timing });
   } catch (e) {
     toast(e.message, true);
   } finally {
@@ -756,6 +877,13 @@ function attachJob(job) {
     }
     if (ev.type === "error") finishJob(ev.error || "Analysis failed.", true);
     if (ev.type === "done") {
+      if (job.kind === "inspection" && job.startedAt && job.timingKey && job.timingReliable !== false) {
+        const times = store.get("inspection-times", []);
+        if (!times.some((r) => r.id === job.id)) {
+          times.push({ id: job.id, key: job.timingKey, ms: Date.now() - job.startedAt });
+          store.set("inspection-times", times.slice(-30));
+        }
+      }
       finishJob(job.kind === "inspection" ? "Inspection saved" : "Benchmark finished");
       setProgress(100);
       const link = $("job-result-link");
@@ -775,6 +903,7 @@ function attachJob(job) {
     }
   };
   stream.onerror = () => {
+    job.timingReliable = false;
     if (activeJob?.id === job.id) $("job-title").textContent = "Reconnecting…";
   };
 }
@@ -850,7 +979,7 @@ function renderTimeline() {
         <i class="tl-dot ${s}"></i>
         <span class="tl-main">
           <strong>${esc(dateLabel(rec.date))}</strong>
-          <small>${STATUS[s]}${mpd != null ? ` · ${num(mpd)}/d` : ""}${rec.synthetic ? ", demo" : hasEv ? ", with evidence" : ""}</small>
+          <small>${rec.demo_capture ? "Demo video analysis" : STATUS[s]}${mpd != null ? ` · ${num(mpd)}/d` : ""}${rec.synthetic ? ", demo" : hasEv ? ", with evidence" : ""}</small>
         </span>
       </button></li>`;
     })
@@ -944,7 +1073,7 @@ function driftNote(hiveId) {
   const from = links.filter((l) => l.to_id === hiveId);
   const to = links.filter((l) => l.from_id === hiveId);
   if (!from.length && !to.length) return "";
-  const nameOf = (id, fallback) => esc(shortName(byId[id] || { name: fallback }));
+  const nameOf = (id, fallback) => `${esc(shortName(byId[id] || { name: fallback }))}${isSynthetic(byId[id] || {}) ? " (Demo)" : ""}`;
   const list = (items) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0]);
   const sentences = [];
   if (from.length) {
@@ -965,6 +1094,9 @@ function renderRecord(hiveId, rec, target) {
   const m = rec.metrics || {};
   const report = rec.report;
   const files = rec.files || {};
+  const captures = Object.entries(rec.inputs?.capture_sources || {});
+  const demoCapture = captures.some(([, source]) => source.source === "demo");
+  const captureHtml = captures.length ? `<div class="capture-provenance"><h4>Captured photos</h4><ul>${captures.map(([photo, source]) => `<li><strong>${esc(photo.replaceAll("_", " "))}</strong> · ${source.source === "camera" ? "Camera" : source.source === "demo" ? "Demo video (recorded)" : "Uploaded video (recorded)"}<br>${esc(source.name)} · ${esc(source.captured_at)} · ${esc(source.width)} × ${esc(source.height)} px${source.video_seconds == null ? "" : ` · video ${esc(Number(source.video_seconds).toFixed(1))}s`}${source.source === "demo" ? ' · <a href="https://commons.wikimedia.org/wiki/File:Queen_honey_bee_laying_eggs.webm" target="_blank" rel="noopener">Source</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener">CC BY-SA 3.0</a> (excerpt, captured still and analysis annotations)' : ""}</li>`).join("")}</ul></div>` : "";
   const s = statusOf(rec.status?.overall);
   const fileUrl = (name, size = 1400) =>
     `/api/file/${encodeURIComponent(hiveId)}/${encodeURIComponent(rec.id)}/${encodeURIComponent(name)}?max_side=${size}`;
@@ -987,9 +1119,8 @@ function renderRecord(hiveId, rec, target) {
         .join("")}</div>`
     : "";
 
-  const flags = (rec.status?.flags || []).length
-    ? `<div class="flags">${rec.status.flags.map((f) => `<div class="flag ${s === "act" ? "act" : ""}">${icon("alert")}<span>${esc(f)}</span></div>`).join("")}</div>`
-    : "";
+  const flags = `<div class="status-checks" aria-label="Status by measurement">${statusReasons(rec.status?.levels, m)
+    .map((r) => `<div class="status-check">${badge(r.level)}<span>${esc(r.text)}</span></div>`).join("")}</div>`;
 
   const overlays = Object.keys(files)
     .filter((k) => k.endsWith("_overlay"))
@@ -1029,19 +1160,19 @@ function renderRecord(hiveId, rec, target) {
   const reportHtml = report
     ? `<div class="report-summary"><strong>Summary</strong>${esc(report.summary)}</div>
       ${
-        report.findings?.length
-          ? `<div class="report-section"><h4>Findings</h4>${report.findings
-              .map((f) => `<div class="finding">${icon("check")}<div>${esc(f.text)}<br><small>Based on claims ${esc((f.claim_ids || []).join(", "))}</small></div></div>`)
-              .join("")}</div>`
-          : ""
-      }
-      ${
         report.actions?.length
           ? `<div class="report-section"><h4>What to do</h4>${report.actions
               .map((a) => {
                 const [cls, text] = urgency[a.urgency] || ["", a.urgency || ""];
                 return `<div class="action"><div class="action-top"><strong>${esc(a.action)}</strong>${text ? `<span class="badge ${cls} plain">${esc(text)}</span>` : ""}</div>${a.reason ? `<p>${esc(a.reason)}</p>` : ""}</div>`;
               })
+              .join("")}</div>`
+          : ""
+      }
+      ${
+        report.findings?.length
+          ? `<div class="report-section"><h4>Findings</h4>${report.findings
+              .map((f) => `<div class="finding">${icon("check")}<div>${esc(f.text)}<br><small>Based on claims ${esc((f.claim_ids || []).join(", "))}</small></div></div>`)
               .join("")}</div>`
           : ""
       }
@@ -1057,12 +1188,9 @@ function renderRecord(hiveId, rec, target) {
   const rejectedCount = claims.filter((c) => c.verdict === "rejected").length;
   const verifiedCount = claims.filter((c) => c.verdict === "verified").length;
   const claimsHtml = claims.length
-    ? `<div class="claims-box">
-        <div class="claims-box-head">
-          <h4>Claims checked against measurements</h4>
-          <span class="tag">${verifiedCount} verified, ${rejectedCount} rejected</span>
-        </div>
-        <table class="claims">
+    ? `<details class="claims-box">
+        <summary>Claims checked against measurements · ${verifiedCount} verified, ${rejectedCount} rejected</summary>
+        <div class="table-wrap"><table class="claims">
           <thead><tr><th>Result</th><th>Claim</th><th>Measured</th></tr></thead>
           <tbody>${claims
             .map(
@@ -1074,28 +1202,31 @@ function renderRecord(hiveId, rec, target) {
                 </tr>`,
             )
             .join("")}</tbody>
-        </table>
-      </div>`
+        </table></div>
+      </details>`
     : "";
 
   el.innerHTML = `<article class="panel record">
     <header class="record-head">
       <div>
-        <h2>${esc(dateLabel(rec.date))} ${badge(s)} ${rec.synthetic ? '<span class="tag demo">Demo data</span>' : '<span class="tag measured">Measured</span>'}</h2>
+        <h2>${esc(dateLabel(rec.date))} ${badge(s)} ${rec.synthetic ? '<span class="tag demo">Demo data</span>' : demoCapture ? '<span class="tag demo">Demo video analysis</span>' : '<span class="tag measured">Measured</span>'}</h2>
         <p>${esc(hiveName(hiveId))}${rec.models?.segmentation && !rec.synthetic ? `, ${esc(rec.models.segmentation)} and ${esc(rec.models.reasoning)}` : ""}</p>
       </div>
       <button class="btn sm record-download" type="button">${icon("download")}Export JSON</button>
     </header>
     <div class="record-body">
-      ${rec.synthetic ? '<div class="alert warn">' + icon("info") + "<p>Demo record. These numbers are simulated to fill the apiary. <b>Hive #7</b> has real measurements from photos.</p></div>" : ""}
-      ${driftNote(hiveId)}
+      ${demoCapture ? '<div class="alert warn"><p>Includes prerecorded demo footage. This analysis is kept in history and excluded from hive status and trends.</p></div>' : ""}
+      ${rec.synthetic ? '<div class="alert warn">' + icon("info") + "<p>Demo record. These numbers and recommendations are simulated. Do not use this record to make decisions about a real colony.</p></div>" : ""}
+      <div class="report report-lead">${reportHtml}</div>
       ${flags}
+      ${demoCapture ? "" : driftNote(hiveId)}
       ${metrics}
       ${compositionBar(m)}
       ${rec.inputs?.note ? `<p class="note"><b>Note:</b> ${esc(rec.inputs.note)}</p>` : ""}
+      ${captureHtml}
       <div class="record-cols">
         <div class="figures">${evidence}${overlays || emptyState("No photos", rec.synthetic ? "Demo records have no photos." : "This inspection has no overlay.")}</div>
-        <div class="report">${claimsHtml}${reportHtml}${rec.trace?.length ? '<details><summary>Agent trace (' + rec.trace.length + ' tool calls)</summary><pre class="trace-log"></pre></details>' : ""}</div>
+        <div class="report">${claimsHtml}${rec.status?.flags?.length ? `<details><summary>Rule notes (${rec.status.flags.length})</summary>${rec.status.flags.map((f) => `<p>${esc(f)}</p>`).join("")}</details>` : ""}${rec.trace?.length ? '<details><summary>Agent trace (' + rec.trace.length + ' tool calls)</summary><pre class="trace-log"></pre></details>' : ""}</div>
       </div>
     </div>
   </article>`;
@@ -1213,6 +1344,16 @@ function renderBenchmark() {
 document.addEventListener("click", (event) => {
   const target = event.target.closest("button,a");
   if (!target) return;
+  if (target.hasAttribute("data-back-top")) {
+    event.preventDefault();
+    $("main").focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: "instant" });
+    return;
+  }
+  if (target.dataset.paletteChoice) {
+    applyPalette(target.dataset.paletteChoice, true);
+    return;
+  }
   if (target.id === "theme-toggle") {
     const cur = document.documentElement.getAttribute("data-theme") || "light";
     applyTheme(cur === "dark" ? "light" : "dark");
@@ -1222,6 +1363,12 @@ document.addEventListener("click", (event) => {
     const measured = state?.apiary?.hives?.find((h) => !isSynthetic(h)) || state?.hives?.[0];
     if (measured) selectHive(measured.id, "history");
     else go("inspect");
+    return;
+  }
+  if (target.id === "welcome-example" && welcomeExample) {
+    selectHive(welcomeExample.hiveId);
+    selectedRecord = welcomeExample.recordId;
+    go("history");
     return;
   }
   if (target.dataset.go) go(target.dataset.go);
@@ -1250,6 +1397,13 @@ document.addEventListener("click", (event) => {
     statusFilter = target.dataset.filter;
     document.querySelectorAll("#status-filter button").forEach((b) => b.setAttribute("aria-pressed", b === target));
     renderHiveGrid();
+  }
+  if (target.id === "clear-hive-filters") {
+    $("hive-search").value = "";
+    $("source-filter").value = "all";
+    statusFilter = "all";
+    renderHiveGrid();
+    $("hive-search").focus();
   }
   if (target.dataset.record) {
     selectedRecord = target.dataset.record;
@@ -1405,16 +1559,19 @@ window.addEventListener("pagehide", () => {
 window.addEventListener("pageshow", (event) => {
   if (event.persisted) {
     renderPreviews();
-    if (activeJob) attachJob(activeJob);
+    if (activeJob) attachJob({ ...activeJob, timingReliable: false });
   }
 });
 
 /* ── Boot ────────────────────────────────────────────────────────────── */
 hydrateIcons();
 applyTheme(store.get("corp_theme", "light"));
+applyPalette(document.documentElement.dataset.palette);
 restoreDraft();
+const initialView = entryView(location.hash.slice(1), document.documentElement.dataset.layoutPreview === "true" || store.get(document.documentElement.dataset.layout === "atlas" ? "atlas-welcomed" : "welcomed", false));
+if (initialView === "welcome" && location.hash !== "#welcome") history.replaceState(null, "", "#welcome");
 route();
 loadState().then((ok) => {
   const job = jobSession.get();
-  if (ok && job) attachJob(job);
+  if (ok && job) attachJob({ ...job, timingReliable: false });
 });

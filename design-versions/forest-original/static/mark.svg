@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- A compact bee: open wings, a dark body and two honey-coloured bands. -->
+  <g stroke="#2f6b45" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m14 8-3-4m7 4 3-4"/>
+    <path d="M13 15C10 8 3 8 3 14c0 4 5 6 10 3Zm6 0c3-7 10-7 10-1 0 4-5 6-10 3Z" fill="#ffffff"/>
+  </g>
+  <circle cx="16" cy="10" r="3.5" fill="#2f6b45"/>
+  <path d="M10 18a6 6 0 0 1 12 0v4c0 4-3 6-6 8-3-2-6-4-6-8Z" fill="#2f6b45"/>
+  <path d="M10 18h12v3H10Zm1 6h10a13 13 0 0 1-2.5 3h-5A13 13 0 0 1 11 24Z" fill="#e9c46a"/>
+</svg>

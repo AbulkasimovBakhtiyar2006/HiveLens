@@ -40,7 +40,10 @@ def web(tmp_path, monkeypatch):
 
 def test_local_assets_and_allowlist(web):
     for path, content_type in [('/', 'text/html'), ('/static/app.css', 'text/css'),
-                               ('/static/app.js', 'text/javascript'), ('/static/mark.svg', 'image/svg+xml')]:
+                               ('/static/app.js', 'text/javascript'), ('/static/mark.svg', 'image/svg+xml'),
+                               ('/designs', 'text/html'), ('/designs/', 'text/html'),
+                               ('/static/layouts.css', 'text/css'), ('/static/layouts.js', 'text/javascript'),
+                               ('/static/layouts-next.css', 'text/css'), ('/static/layouts-next.js', 'text/javascript')]:
         status, headers, body = web(path)
         assert status == 200 and content_type in headers['Content-Type']
         assert len(body) == int(headers['Content-Length'])
@@ -58,6 +61,45 @@ def test_create_hive_and_read_empty_history(web):
     assert state['apiary']['hives'][0]['synthetic'] is False
     assert state['hives'][0]['name'] == 'Meadow 01'
     assert json.loads(web(f'/api/hive/{hive_id}')[2])['inspections'] == []
+
+
+def test_demo_video_supports_browser_seeking(web):
+    status, headers, body = web('/static/comb-demo.mp4', headers={'Range': 'bytes=0-31'})
+    assert status == 206 and len(body) == 32
+    assert headers['Content-Type'] == 'video/mp4'
+    assert headers['Content-Range'].startswith('bytes 0-31/')
+    assert b'ftyp' in body
+    assert web('/static/comb-demo.mp4', headers={'Range': 'bytes=999999999-'} )[0] == 416
+    assert web('/static/camera.js')[0] == 200
+
+
+def test_capture_sources_validated_before_starting_job(web):
+    hive = store.create_hive('Camera hive')
+    payload = {'hive_id': hive['id'], 'date': '2026-11-04', 'frames_b64': ['image']}
+    source = {'source': 'camera', 'name': 'Back camera', 'captured_at': '2026-11-04T16:00:00Z',
+              'width': 1920, 'height': 1080, 'video_seconds': None}
+    payload['capture_sources'] = {'frame_1': source}
+    server._validate_inspection_payload(payload)
+    for bad in [None, {'board': source}, {'frame_1': {**source, 'width': 0}},
+                {'frame_1': {**source, 'source': 'live-youtube'}},
+                {'frame_1': {**source, 'video_seconds': float('nan')}}]:
+        payload['capture_sources'] = bad
+        assert web('/api/inspect', payload)[0] == 400
+    assert not server._JOBS
+
+
+def test_demo_video_analysis_does_not_change_colony_status_or_trends(web):
+    hive = store.create_hive('Real colony')
+    store.save_inspection(hive['id'], {'id': 'real', 'date': '2026-11-03',
+        'metrics': {'mites_per_day': 1}, 'status': {'overall': 'good'}}, {}, {})
+    store.save_inspection(hive['id'], {'id': 'demo', 'date': '2026-11-04', 'demo_capture': True,
+        'metrics': {'mites_per_day': 90}, 'status': {'overall': 'act'}}, {}, {})
+    overview = json.loads(web('/api/state')[2])['apiary']['hives'][0]
+    assert overview['overall'] == 'good' and overview['mites_per_day'] == 1
+    history = json.loads(web(f'/api/hive/{hive["id"]}')[2])
+    assert len(history['inspections']) == 2
+    assert len(history['metrics_rows']) == 1
+    assert len(store.history_before(hive['id'], '2026-11-05')) == 1
 
 
 @pytest.mark.parametrize('change', [

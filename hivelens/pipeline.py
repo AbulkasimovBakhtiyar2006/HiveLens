@@ -22,10 +22,20 @@ def run_inspection(
     use_agent: bool = True,
     board_tile: int = 600,
     board_refine: bool = True,
+    capture_sources: dict | None = None,
     progress: Callable[[str, float], None] | None = None,
     on_event: Callable[[dict], None] | None = None,
 ) -> dict:
     frames = frames or []
+    capture_sources = {photo: dict(source) for photo, source in (capture_sources or {}).items()}
+    for source in capture_sources.values():
+        if source.get("source") == "demo":
+            source.update({
+                "source_url": "https://commons.wikimedia.org/wiki/File:Queen_honey_bee_laying_eggs.webm",
+                "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+                "attribution": "Ask a Biologist, Arizona State University",
+                "changes": "16-second excerpt from 00:08, audio removed, 15 fps H.264; captured still and analysis annotations",
+            })
     if not frames and board is None:
         raise ValueError("Add at least one frame photo or a sticky board photo.")
     say = progress or (lambda msg, frac: None)
@@ -63,7 +73,8 @@ def run_inspection(
         overlays[pid] = viz.comb_overlay(frame, res)
         detections[pid] = {k: len(v) for k, v in res.instances.items()}
 
-    history = store.history_before(hive_id, date)
+    demo_capture = any(source.get("source") == "demo" for source in (capture_sources or {}).values())
+    history = [] if demo_capture else store.history_before(hive_id, date)
     previous = history[-1]["metrics"] if history else None
     metrics = engine.add_trends(engine.aggregate(varroa_metrics, comb_metrics, frames_in_hive), previous)
     status = engine.assess(metrics)
@@ -79,10 +90,17 @@ def run_inspection(
         "detections": detections,
         "status": status,
     }
+    if capture_sources:
+        record["inputs"]["capture_sources"] = capture_sources
+    if demo_capture:
+        record["demo_capture"] = True
 
     if use_agent:
         say("Muse Spark: forming hypotheses and checking them", 0.8)
-        run = agent.run_agent(photos, metrics, history, note=note, on_event=on_event)
+        context_note = note
+        if demo_capture:
+            context_note += "\nSome photos are captures from a prerecorded demonstration video, not this colony. Explain that those measurements describe demo footage and cannot establish this colony's condition."
+        run = agent.run_agent(photos, metrics, history, note=context_note, on_event=on_event)
         record.update(run.to_json())
 
     say("Saving inspection", 0.97)

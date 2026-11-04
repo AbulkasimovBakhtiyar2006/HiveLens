@@ -154,7 +154,7 @@ def history_before(hive_id: str, date: str) -> list[dict]:
     return [
         {"date": i["date"], "metrics": i.get("metrics", {}), "overall": i.get("status", {}).get("overall")}
         for i in inspections(hive_id)
-        if i.get("date", "") < date
+        if i.get("date", "") < date and not i.get("demo_capture")
     ]
 
 
@@ -189,6 +189,8 @@ def file_path(hive_id: str, insp_id: str, name: str) -> Path:
 def metrics_rows(hive_id: str) -> list[dict]:
     rows = []
     for i in inspections(hive_id):
+        if i.get("demo_capture"):
+            continue
         rows.append({"date": i["date"], "overall": i.get("status", {}).get("overall"), **i.get("metrics", {})})
     return rows
 

@@ -4,18 +4,23 @@ and Muse Spark is replaced by a scripted fake that calls the same tools."""
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 from PIL import Image
-
-os.environ["HIVELENS_DATA_DIR"] = tempfile.mkdtemp()
 
 from meta_sam_parser._mask_codec import _encode_raster  # noqa: E402
 
-from hivelens import agent, engine, measure, sam, store  # noqa: E402
+from hivelens import agent, config, engine, measure, sam, store  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def isolated_data(tmp_path, monkeypatch):
+    # Works even when another test module imported config before this module.
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "HIVES_DIR", tmp_path / "hives")
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
 
 
 def sam_line(objects: list[tuple[int, int, int, int, float]], w: int, h: int) -> str:
@@ -159,7 +164,8 @@ def test_store_and_export():
     assert any(n.endswith("metrics.csv") for n in names) and any(n.endswith("board.jpg") for n in names)
 
 
-def test_pipeline_end_to_end(monkeypatch):
+@pytest.mark.parametrize("capture_source", ["camera", "demo"])
+def test_pipeline_end_to_end(monkeypatch, capture_source):
     """Full inspection with fake SAM + fake Muse Spark: measurements, overlays, agent, storage."""
     from hivelens import pipeline
 
@@ -190,8 +196,16 @@ def test_pipeline_end_to_end(monkeypatch):
     hive = store.create_hive("Pipeline hive")
     board = Image.new("RGB", (1500, 1000), "white")
     frame = Image.new("RGB", (800, 500), (200, 160, 60))
+    captures = {"frame_1": {"source": capture_source, "name": "Test camera", "captured_at": "2026-11-04T16:00:00Z",
+                            "width": 800, "height": 500, "video_seconds": None}}
     rec = pipeline.run_inspection(hive["id"], "2026-11-04", frames=[frame], board=board, days_on_board=2, frames_in_hive=8,
-                                board_tile=1344)
+                                board_tile=1344, capture_sources=captures)
+    assert rec["inputs"]["capture_sources"]["frame_1"]["source"] == capture_source
+    saved = store.inspections(hive["id"])[-1]
+    assert saved["inputs"]["capture_sources"] == rec["inputs"]["capture_sources"]
+    assert bool(saved.get("demo_capture")) == (capture_source == "demo")
+    if capture_source == "demo":
+        assert saved["inputs"]["capture_sources"]["frame_1"]["license_url"].endswith("/by-sa/3.0/")
     m = rec["metrics"]
     assert m["mite_count"] == 12 and m["mites_per_day"] == 6.0  # 2 tiles x 6 mites, no overlap duplicates
     assert 35 < m["honey_pct"] < 50  # ellipse masks and m["frames_in_hive"] == 8

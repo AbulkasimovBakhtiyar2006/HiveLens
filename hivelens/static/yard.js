@@ -158,18 +158,18 @@ function yardSvg(key, members, links) {
       const [stroke, soft] = TONE[s];
       const fill = h.color || soft;
       const ink = h.color ? inkFor(h.color) : "var(--text)";
-      const measured = !isSynthetic(h);
+      const measured = !isSynthetic(h) && Boolean(h.latest_date);
       const selected = mapSelection[key] === h.id;
       const value = h.mites_per_day != null ? num(h.mites_per_day) : "–";
       const unit = h.mites_per_day != null ? "mites/day" : "no count";
-      const label = `${displayName(h)}, ${STATUS[s]}, ${h.mites_per_day != null ? `${num(h.mites_per_day)} mites per day` : "no inspection"}${measured ? ", measured" : ""}`;
+      const label = `${displayName(h)}, ${STATUS[s]}, ${h.mites_per_day != null ? `${num(h.mites_per_day)} mites per day` : "no mite count"}${isSynthetic(h) ? ", Demo data" : measured ? ", measured" : ", not inspected"}`;
       return `<g class="map-node${measured ? " measured" : ""}${selected ? " selected" : ""}${editing ? " draggable" : ""}${ed?.dragging === h.id ? " dragging" : ""}" data-map-hive="${esc(h.id)}" data-map-farm="${esc(key)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${esc(label)}">
         <title>${esc(label)}${editing ? `. Position ${num(p.x, 2)} m, ${num(p.y, 2)} m` : ""}</title>
         ${measured || selected ? `<rect class="map-ring" x="${(cx - tw / 2 - 5).toFixed(1)}" y="${(cy - th / 2 - 5).toFixed(1)}" width="${tw + 10}" height="${th + 10}" rx="${compact ? 10 : 13}"/>` : ""}
         <rect class="map-tile" x="${(cx - tw / 2).toFixed(1)}" y="${(cy - th / 2).toFixed(1)}" width="${tw}" height="${th}" rx="${compact ? 7 : 9}" fill="${fill}" stroke="${stroke}"/>
         <text class="map-value${compact ? " compact" : ""}" x="${cx.toFixed(1)}" y="${(cy + (compact ? 4.5 : 1)).toFixed(1)}" text-anchor="middle" style="fill:${ink}">${esc(value)}</text>
         ${compact ? "" : `<text class="map-unit" x="${cx.toFixed(1)}" y="${(cy + 14).toFixed(1)}" text-anchor="middle" style="fill:${ink}">${unit}</text>`}
-        <text class="map-label${compact ? " compact" : ""}" x="${cx.toFixed(1)}" y="${(cy + th / 2 + (compact ? 13 : 17)).toFixed(1)}" text-anchor="middle">${esc(shortName(h))}</text>
+        <text class="map-label${compact ? " compact" : ""}" x="${cx.toFixed(1)}" y="${(cy + th / 2 + (compact ? 13 : 17)).toFixed(1)}" text-anchor="middle">${esc(shortName(h))}${isSynthetic(h) ? " · Demo" : ""}</text>
       </g>`;
     })
     .join("");
@@ -204,14 +204,14 @@ function hiveDetail(key, h) {
   const p = positionOf(key, h);
   return `<div class="map-detail">
     <div class="map-detail-head"><strong>${esc(displayName(h))}</strong>${badge(s)}</div>
-    <p class="map-detail-meta">${isSynthetic(h) ? "Demo data" : "Measured"}${h.latest_date ? `, last inspected ${esc(dateLabel(h.latest_date))}` : ", not inspected yet"}. Stands at ${num(p.x, 2)} m, ${num(p.y, 2)} m${h.placed || yardEdit[key] ? "" : " (default spot)"}.</p>
+    <p class="map-detail-meta">${isSynthetic(h) ? "Demo data" : h.latest_date ? "Measured" : "No inspection"}${h.latest_date ? `, last inspected ${esc(dateLabel(h.latest_date))}` : ", not inspected yet"}. Stands at ${num(p.x, 2)} m, ${num(p.y, 2)} m${h.placed || yardEdit[key] ? "" : " (default spot)"}.</p>
     <dl class="map-stats">
       ${stat("Mites per day", h.mites_per_day, "")}
       ${stat("Honey", h.honey_kg_hive_est, "kg")}
       ${stat("Brood", h.brood_total_pct, "%")}
       ${stat("Stores", h.stores_weeks, "wk")}
     </dl>
-    ${h.flags?.length ? `<p class="map-flag ${s}">${esc(h.flags[0])}</p>` : ""}
+    ${["act", "watch"].includes(s) ? `<p class="map-flag ${s}">${esc(primaryReason(h))}</p>` : ""}
     ${paintPicker(h)}
     <div class="map-detail-actions">
       <button type="button" class="btn sm primary" data-hive="${esc(h.id)}" data-destination="history">Open records</button>
@@ -249,12 +249,12 @@ function farmMapPanel(key, members, links, showFarmName) {
          <button type="button" class="btn sm primary" data-yard-save="${esc(key)}"${editing.dirty ? "" : " disabled"}>Save layout</button>`
       : `<button type="button" class="btn sm" data-yard-edit="${esc(key)}">Edit layout</button>`;
   const head = `<header class="panel-head">
-      <div class="panel-title-group"><h2>${esc(title)}</h2><span class="sub-text">${esc(sub)}</span></div>
+      <div class="panel-title-group"><h2>${esc(title)}</h2><span class="sub-text">${esc(sub)}${members.some(isSynthetic) ? ` Includes ${members.filter(isSynthetic).length} demo hives; their readings and drift links are simulated.` : ""}</span></div>
       <div class="page-actions">${actions}</div>
     </header>
     <p class="map-explain">Lines show where mites can spread. Drifting and robbing bees carry varroa from a hive dropping ${num(state?.thresholds?.mites_per_day_high ?? 10, 0)} or more mites a day to its neighbours within ${DRIFT_M} m. A hive without a line is not near such a hive.</p>
     <div class="map-legend map-legend-row">
-      <span><i class="dot good"></i>Below 3</span><span><i class="dot watch"></i>3–10</span><span><i class="dot act"></i>10+ mites/day</span>
+      <span><i class="dot good"></i>Normal</span><span><i class="dot watch"></i>Watch</span><span><i class="dot act"></i>Critical</span><span>Border: overall status across mites, stores and brood</span>
       <span><i class="key-line high"></i>Under 2.8 m from a 10+ hive</span><span><i class="key-line"></i>2.8–4 m</span>
       ${editing ? '<span><i class="key-line measure"></i>Distance while dragging</span>' : ""}
       <span><i class="key-ring"></i>Measured</span>
@@ -274,7 +274,7 @@ function farmMapPanel(key, members, links, showFarmName) {
         .map(
           (l) => `<button type="button" class="drift-item ${l.risk === "high" ? "high" : ""}" data-map-hive="${esc(l.to_id)}" data-map-farm="${esc(key)}">
             <span class="drift-item-top"><span>${esc(shortName(byId[l.to_id] || { name: l.to_name }))}</span><span class="drift-dist">${l.risk === "high" ? "High" : "Moderate"}</span></span>
-            <small>${esc(l.distance_m)} m from ${esc(shortName(byId[l.from_id] || { name: l.from_name }))}, which drops ${num(byId[l.from_id]?.mites_per_day)} mites a day</small>
+            <small>${isSynthetic(byId[l.from_id] || {}) || isSynthetic(byId[l.to_id] || {}) ? "Demo link · " : ""}${esc(l.distance_m)} m from ${esc(shortName(byId[l.from_id] || { name: l.from_name }))}, which drops ${num(byId[l.from_id]?.mites_per_day)} mites a day</small>
           </button>`,
         )
         .join("") +
