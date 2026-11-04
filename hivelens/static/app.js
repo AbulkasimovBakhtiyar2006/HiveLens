@@ -193,9 +193,7 @@ function route() {
     link.classList.toggle("active", key === view);
     key === view ? link.setAttribute("aria-current", "page") : link.removeAttribute("aria-current");
   }
-  $("topbar-title").textContent = VIEWS[view];
-  $("topbar-colony-pill").hidden = !["inspect", "history"].includes(view);
-  updateTopbarActions();
+  renderTopbar();
   document.title = `${VIEWS[view]} · HiveLens`;
   window.scrollTo({ top: 0, behavior: "instant" });
   renderView();
@@ -261,9 +259,8 @@ function syncHiveSelects() {
     $(id).value = selectedHive || "";
   }
 
-  const active = byId[selectedHive];
-  $("topbar-colony-pill").textContent = active ? `${farmName(active.farm_id)} / ${shortName(active)}` : "";
   renderFarmNav();
+  renderTopbar();
 }
 
 function selectHive(id, destination) {
@@ -343,17 +340,47 @@ function fillFarmSelect(select, current) {
 
 // The yard maps (view and layout editor) live in yard.js.
 
-// Top bar actions follow the page: adding belongs to the overview (a farm or all farms),
-// and pages that already have their own "New inspection" button don't get a second one.
-function updateTopbarActions() {
-  const overview = view === "overview";
-  $("top-add-farm").hidden = !(overview && selectedFarm === "all");
-  $("top-add-hive").hidden = !(overview && selectedFarm !== "all");
-  $("top-new-inspection").hidden = ["inspect", "history", "usage", "settings"].includes(view);
+// The top bar says where you are (farm / hive / page) and shows the facts that matter there:
+// for a farm its hives, alerts and the weather now; for a hive its status and latest numbers.
+// Actions live in each page's own header, so nothing here repeats a page button.
+function renderTopbar() {
+  if (!$("topbar-crumbs")) return;
+  const fact = (text, tone = "") => `<span class="fact${tone ? ` ${tone}` : ""}">${text}</span>`;
+  const farm = selectedFarm === "all" ? null : farmByKey(selectedFarm);
+  const hive = state ? hives().find((h) => h.id === selectedHive) : null;
+  let crumbs = [VIEWS[view]];
+  let facts = "";
+  if (view === "overview" && state) {
+    crumbs = [farm ? farm.name : "All farms", "Overview"];
+    const list = hivesInView();
+    const n = (s) => list.filter((h) => h.overall === s).length;
+    facts += fact(`${list.length} hive${list.length === 1 ? "" : "s"}`);
+    if (n("act")) facts += fact(`${n("act")} critical`, "act");
+    if (n("watch")) facts += fact(`${n("watch")} to watch`, "watch");
+    if (!n("act") && !n("watch") && list.length) facts += fact("All normal", "good");
+    const now = farm?.id && typeof weatherCache !== "undefined" ? weatherCache[farm.id]?.data?.current : null;
+    if (now) {
+      facts += fact(`<img src="/static/weather/${weatherIconName(now)}.svg" width="22" height="22" alt="" />${num(now.temp_c, 0)} °C, ${esc(now.text.toLowerCase())}, wind ${num(now.wind_ms)} m/s`);
+      facts += fact(`Bee flight: ${FLIGHT[now.flight.level].toLowerCase()}`, now.flight.level === "good" ? "good" : now.flight.level === "limited" ? "watch" : "");
+    }
+  } else if (["history", "inspect"].includes(view) && hive) {
+    crumbs = [farmName(hive.farm_id), shortName(hive), VIEWS[view]];
+    const s = statusOf(hive.overall);
+    facts += fact(STATUS[s], s === "unknown" ? "" : s);
+    if (hive.mites_per_day != null) facts += fact(`${num(hive.mites_per_day)} mites/day`);
+    if (hive.stores_weeks != null) facts += fact(`${num(hive.stores_weeks)} weeks of stores`);
+    facts += fact(hive.latest_date ? `Inspected ${esc(dateLabel(hive.latest_date))}` : "Not inspected yet");
+  }
+  $("topbar-crumbs").innerHTML = crumbs
+    .map((c, i) => (i === crumbs.length - 1 ? `<strong aria-current="page">${esc(c)}</strong>` : `<span>${esc(c)}</span><span class="crumb-sep" aria-hidden="true">/</span>`))
+    .join("");
+  $("topbar-facts").innerHTML = facts;
 }
 
 function renderOverview() {
-  updateTopbarActions();
+  $("page-add-farm").hidden = selectedFarm !== "all";
+  $("page-add-hive").hidden = selectedFarm === "all";
+  renderTopbar();
   const all = hivesInView();
   const count = (s) => all.filter((h) => h.overall === s).length;
   const measuredCount = all.filter((h) => !isSynthetic(h)).length;

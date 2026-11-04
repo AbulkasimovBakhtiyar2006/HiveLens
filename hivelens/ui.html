@@ -69,16 +69,9 @@
 
     <div class="workspace">
       <header class="topbar">
-        <div class="topbar-left">
-          <strong id="topbar-title" class="crumb-current">Overview</strong>
-          <span id="topbar-colony-pill" class="colony-context-pill"></span>
-        </div>
-        <div class="topbar-right">
-          <!-- Shown per page by updateTopbarActions() in app.js, so they never repeat page buttons. -->
-          <button id="top-add-farm" class="btn sm" type="button" data-add-farm hidden>Add farm</button>
-          <button id="top-add-hive" class="btn sm" type="button" data-add-hive hidden>Add hive</button>
-          <button id="top-new-inspection" class="btn sm primary" type="button" data-go="inspect">New inspection</button>
-        </div>
+        <!-- Where you are, and the facts that matter for it. Filled by renderTopbar() in app.js. -->
+        <nav id="topbar-crumbs" class="crumbs" aria-label="You are here"></nav>
+        <div id="topbar-facts" class="topbar-facts" aria-live="polite"></div>
       </header>
 
       <main id="main" class="container" tabindex="-1">
@@ -93,10 +86,12 @@
             <div>
               <h1 id="overview-title">All farms</h1>
               <p id="overview-sub" class="muted">Latest inspection of each hive.</p>
+              <p class="demo-links">Demo data: <button class="link-btn" type="button" id="hero-open-measured">open the measured hive</button> or <button class="link-btn" type="button" id="seed-demo">load the demo farms</button>.</p>
             </div>
             <div class="page-actions">
-              <button class="btn" type="button" id="hero-open-measured">Open measured hive</button>
-              <button class="btn" type="button" id="seed-demo">Load demo apiary</button>
+              <button id="page-add-farm" class="btn" type="button" data-add-farm hidden>Add farm</button>
+              <button id="page-add-hive" class="btn" type="button" data-add-hive hidden>Add hive</button>
+              <button class="btn primary" type="button" data-go="inspect">New inspection</button>
             </div>
           </div>
 

@@ -46,6 +46,14 @@
   align-items: start;
   padding: var(--pad);
 }
+/* The icon panel runs the full height of the weather details beside it. */
+.cond-scene {
+  display: flex;
+  align-self: stretch;
+}
+.cond-scene .wx-lg {
+  flex: 1;
+}
 .cond-body.no-weather {
   grid-template-columns: minmax(0, 1fr);
   padding-top: 0;

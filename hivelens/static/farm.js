@@ -155,7 +155,10 @@ function loadWeather(farmId) {
     .finally(() => {
       entry.promise = null;
       entry.at = Date.now();
-      if (view === "overview") renderFarmConditions();
+      if (view === "overview") {
+        renderFarmConditions();
+        renderTopbar();
+      }
     });
   weatherCache[farmId] = entry;
   return entry;
