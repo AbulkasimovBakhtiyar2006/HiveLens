@@ -2774,3 +2774,9 @@ dialog::backdrop {
 .analysis-details { border-top: 1px solid var(--border); margin: 16px 0; padding-top: 12px; color: var(--text-2); font-size: var(--type-sm); }
 .analysis-details summary { cursor: pointer; font-weight: 500; }
 .analysis-details .steps { margin: 12px 0; }
+/* Public judging links expose saved evidence, while shared edits require sign-in. */
+body.public-preview [data-add-farm],
+body.public-preview [data-add-hive],
+body.public-preview [data-edit-farm],
+body.public-preview .demo-links,
+body.public-preview #fetch-frames { display: none !important; }

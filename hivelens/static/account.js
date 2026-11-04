@@ -171,6 +171,9 @@ function fillSettings(data) {
 }
 
 function renderSettings() {
+  document.querySelectorAll("#settings-form input, #settings-form select, #settings-form button").forEach((el) => {
+    if (!el.closest(".appearance-settings")) el.disabled = state?.can_write === false;
+  });
   if (settingsDirty) return; // keep what the user is typing
   api("/api/settings")
     .then(fillSettings)

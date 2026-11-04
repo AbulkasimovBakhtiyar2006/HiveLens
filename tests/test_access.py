@@ -14,6 +14,7 @@ def credentials(monkeypatch):
     monkeypatch.setattr(config, 'AUTH_USER', 'judge')
     monkeypatch.setattr(config, 'AUTH_PASSWORD', 'test-password-not-a-real-secret')
     monkeypatch.setattr(config, 'SECURE_COOKIES', True)
+    monkeypatch.setattr(config, 'PUBLIC_READ', False)
     monkeypatch.setattr(access, '_attempts', {})
 
 
@@ -70,3 +71,34 @@ def test_login_attempts_are_limited(web):
     for _ in range(10):
         assert login(web, 'wrong')[0] == 401
     assert login(web)[0] == 429
+
+
+def test_public_preview_reads_saved_evidence_but_cannot_write_or_run_models(web, monkeypatch):
+    monkeypatch.setattr(config, 'PUBLIC_READ', True)
+    from hivelens import settings
+    import server
+    hive = store.create_hive('Public example')
+    store.save_inspection(hive['id'], {'id': 'r', 'date': '2026-11-04'},
+                          {'board': Image.new('RGB', (2, 2))}, {})
+    monkeypatch.setattr(settings, 'load', lambda: {**settings.DEFAULTS,
+        'profile': {**settings.DEFAULTS['profile'], 'email': 'owner-private@example.com'}})
+    for path in ['/', '/static/app.js', '/api/state', '/api/workspaces/demo/state',
+                 '/api/workspaces/production/state', '/api/research/mustb',
+                 f'/api/hive/{hive["id"]}', f'/api/file/{hive["id"]}/r/board.jpg',
+                 f'/api/export/{hive["id"]}.zip']:
+        assert web(path)[0] == 200, path
+    public_state = json.loads(web('/api/state')[2])
+    assert public_state['can_write'] is False
+    assert public_state['profile']['email'] == ''
+    assert b'owner-private' not in web('/api/settings')[2]
+    for prefix in ['/api/', '/api/workspaces/demo/', '/api/workspaces/production/']:
+        for route in ['inspect', 'benchmark', 'commons', 'seed_apiary', 'hives',
+                      'farms', 'settings', 'profile_photo', 'hive_layout', 'hive_style']:
+            assert web(prefix + route, {})[0] == 401
+    assert not server._JOBS
+    assert web('/api/jobs/private/stream')[0] == 401
+    assert web('/api/profile_photo')[0] == 401
+    cookie = login(web)[1]['Set-Cookie']
+    auth = {'Cookie': cookie}
+    assert json.loads(web('/api/state', headers=auth)[2])['can_write'] is True
+    assert web('/api/hives', {'name': 'Owner-created'}, auth)[0] == 200

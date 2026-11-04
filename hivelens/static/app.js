@@ -205,6 +205,9 @@ function toast(message, error = false) {
 }
 
 async function api(path, body, signal) {
+  if (body !== undefined && state?.can_write === false) {
+    throw new Error("This is a public preview. Owner sign-in is required to run analyses or change shared data.");
+  }
   const controller = signal ? null : new AbortController();
   const timer = controller ? setTimeout(() => controller.abort(), path === "/api/commons" ? 180000 : 60000) : null;
   try {
@@ -318,7 +321,9 @@ async function renderWelcome() {
 async function loadState() {
   try {
     state = await api("/api/state");
-    $("signout").hidden = !state.auth_enabled;
+    $("signout").hidden = !state.auth_enabled || !state.can_write;
+    $("public-access-note").hidden = state.can_write !== false;
+    document.body.classList.toggle("public-preview", state.can_write === false);
     applyWorkspaceMode();
     $("load-error").hidden = true;
     const measuredHives = state.apiary?.hives?.filter((h) => !isSynthetic(h)) || [];
@@ -631,6 +636,7 @@ const checkedFrameSamples = () => [...document.querySelectorAll(".frame-sample:c
 
 function inspectionReadiness() {
   if (!state) return "Loading inspection settings…";
+  if (state.can_write === false) return "Owner sign-in is required to run a new analysis. You can explore saved results without signing in.";
   if (activeJob || startingJob) return "An analysis is running. Wait for it to finish.";
   if (!state.has_api_key) return "Add MODEL_API_KEY to .env to run inspections.";
   if (!state.hives.some((h) => h.id === selectedHive)) return "Choose a hive first.";
@@ -776,7 +782,7 @@ function readBase64(file) {
 }
 
 function updateRunButtons() {
-  const disabled = Boolean(activeJob || startingJob || !state?.has_api_key);
+  const disabled = Boolean(activeJob || startingJob || !state?.has_api_key || state?.can_write === false);
   $("run-benchmark").disabled = disabled;
   updateSummary();
 }

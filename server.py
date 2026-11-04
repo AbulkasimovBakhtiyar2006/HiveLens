@@ -748,7 +748,10 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/settings":
-            self._send_json({"settings": settings.load(), "api": self._api_info()})
+            public_settings = settings.load()
+            if not access.can_write(self):
+                public_settings["profile"] = dict(settings.DEFAULTS["profile"])
+            self._send_json({"settings": public_settings, "api": self._api_info()})
             return
 
         if path == "/api/profile_photo":
@@ -787,11 +790,12 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 "workspace": workspace.current(),
                 "has_api_key": config.has_api_key(),
                 "auth_enabled": bool(config.AUTH_PASSWORD),
+                "can_write": access.can_write(self),
                 "maps": {
                     "browser_key": config.GOOGLE_MAPS_BROWSER_KEY,
                     "map_id": config.GOOGLE_MAPS_MAP_ID,
                 },
-                "profile": settings.load()["profile"],
+                "profile": settings.load()["profile"] if access.can_write(self) else dict(settings.DEFAULTS["profile"]),
                 "segment_model": config.SEGMENT_MODEL,
                 "reasoning_model": config.REASONING_MODEL,
                 "thresholds": {

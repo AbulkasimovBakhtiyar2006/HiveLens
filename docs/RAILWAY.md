@@ -10,6 +10,9 @@ The bundled benchmark and public illustrations remain available when `/data` is 
 - `HIVELENS_AUTH_USER`: login name, e.g. `judge`.
 - `HIVELENS_AUTH_PASSWORD`: a unique random password, at least 16 characters.
 - `MODEL_API_KEY`: the owner's Meta Model API credential, only in Railway variables.
+- `HIVELENS_PUBLIC_READ=1`: allow visitors to browse saved records, images, exports,
+  study data and benchmarks without a password. All POST writes/model calls and
+  job streams still require owner sign-in. Enable only for data intended to be public.
 - `HIVELENS_IMPORT_STUDY=1`: optionally import the attributed historical Serra da
   Lousa study apiary in Production at startup; repeated imports preserve inspections.
 
@@ -29,8 +32,10 @@ cross-origin writes are rejected. Sign out clears the browser cookie. Rotating t
 password invalidates all existing sessions. Login attempts are limited by the socket
 peer, which may be shared by visitors behind Railway's proxy.
 
-Only `/healthz` and the sign-in page are public. Image files, exports, APIs and the UI
-require a session. The deployment archive/image exclude local `.env`, private hive
+By default only `/healthz` and the sign-in page are public. With `HIVELENS_PUBLIC_READ=1`,
+the UI and explicitly allowed read APIs, images and exports are public. Owner profile
+details are omitted for guests; profile photos and job streams remain private.
+Changing data and running models always require a session. The deployment archive/image exclude local `.env`, private hive
 data, model caches, IDE files and demo-video production assets.
 
 Deployment is billed under the Railway account's existing plan; model calls are

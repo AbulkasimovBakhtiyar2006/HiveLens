@@ -42,6 +42,18 @@ def same_origin(handler) -> bool:
     return parsed.scheme in ("https", "http") and parsed.netloc == handler.headers.get("Host")
 
 
+def can_write(handler) -> bool:
+    return not config.AUTH_PASSWORD or session_valid(handler.headers.get("Cookie", ""))
+
+
+def public_read_path(path: str) -> bool:
+    # Explicit read-only routes; job streams and owner profile photos remain private.
+    return path in ("/", "/index.html", "/api/state", "/api/settings", "/api/usage", "/api/research/mustb") or path.startswith((
+        "/static/", "/api/weather/", "/api/demo_asset/", "/api/hive/",
+        "/api/file/", "/api/sample_preview/", "/api/export/",
+    ))
+
+
 def _redirect(handler, location: str, cookie: str | None = None) -> None:
     handler.send_response(303)
     handler.send_header("Location", location)
@@ -121,9 +133,11 @@ def authorize(handler, *, post: bool = False) -> bool:
         value = f"{int(time.time()) + TTL}.{secrets.token_hex(16)}"
         _redirect(handler, "/", _cookie(value + "." + _signature(value), TTL))
         return False
-    if not session_valid(handler.headers.get("Cookie", "")):
+    if not post and config.PUBLIC_READ and public_read_path(path):
+        return True
+    if not can_write(handler):
         if post or path.startswith("/api/"):
-            handler._send_json({"error": "Sign in to continue.", "login_url": "/login"}, 401)
+            handler._send_json({"error": "Owner sign-in is required to run analyses or change shared data. Saved results are available without signing in.", "login_url": "/login"}, 401)
         else:
             _redirect(handler, "/login")
         return False

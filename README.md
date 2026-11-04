@@ -2,9 +2,9 @@
 
 **A hive inspection agent that measures before it speaks.**
 
-[Open the live demo](https://hivelens-production.up.railway.app/) · Password-protected
-shared judging workspace. Use the access details provided with the submission, or
-follow the keyless local setup below.
+[Open HiveLens on Railway](https://hivelens-production.up.railway.app/?mode=demo#welcome)
+— no installation or password is needed to explore saved analyses, photographs,
+benchmarks and published study histories. New analyses and shared edits require owner sign-in.
 
 HiveLens turns sticky-board and comb photographs into an inspection you can audit:
 counts, visible comb composition, marked-up images, checked claims and a saved report.
@@ -33,7 +33,27 @@ the submission implements and what it reuses.
 HiveLens supports inspection and review. It does not diagnose all bee diseases or
 establish that a colony is healthy from a photograph.
 
-## Start locally
+## Try the hosted project
+
+These links open the deployed Railway server:
+
+| Workspace | Public link | Data |
+|---|---|---|
+| Demo | [Start here](https://hivelens-production.up.railway.app/?mode=demo#welcome) | Attributed saved photo analysis, overlays and checked findings |
+| Production | [Study apiary](https://hivelens-production.up.railway.app/?mode=production#overview) | Seven imported Serra da Lousa study hives; historical research, not a live deployment |
+| Field dataset | [Published research](https://hivelens-production.up.railway.app/?mode=demo#research) | Read-only EFSA MUST-B archive, accessible from both workspaces |
+
+The Meta API key is configured **on the Railway server** and is never sent to the
+browser. Public visitors cannot spend it or modify shared records. The owner can
+sign in at `/login` to access analysis and editing controls.
+
+**Cloud analysis status (5 Nov 2026, Almaty):** saved results work. New Meta model
+requests from Railway currently return `404 model_not_found`, despite successful
+local checks with the same key and model IDs. Live cloud inference is not yet
+verified; use the saved evidence to review the project. This is separate from the
+automated test suite, which runs without paid model calls (commands below).
+
+## Start locally — on your own computer
 
 Use **Python 3.12** for the tested, pinned setup. With [uv](https://docs.astral.sh/uv/):
 
@@ -64,9 +84,11 @@ The alternative notebook interface is `streamlit run app.py`.
 
 ### Demo and production workspaces
 
-For a shared, password-protected online demo, see [Railway deployment](docs/RAILWAY.md).
+For hosting and owner access, see [Railway deployment](docs/RAILWAY.md).
 
-Use the **Demo / Production** selector above the page, or open a direct link:
+Use the **Demo / Production** selector above the page. The following URLs are
+**local-only**, available after starting `python server.py` on your computer.
+They are not the hosted demo links; use the Railway links above for online review.
 
 | Workspace | Link | Data |
 |---|---|---|
@@ -82,7 +104,8 @@ demo-video input are rejected in production by the server as well as hidden in t
 Users remain responsible for the provenance of their own uploads.
 
 “Production” names the **working-data workspace**, not a claim of deployment readiness.
-This is a local application bound to `127.0.0.1`, without multi-user authentication.
+Local startup binds to `127.0.0.1` without requiring a login. Railway uses HTTPS,
+public read-only viewing and a shared owner login for writes, not per-user accounts.
 Model credentials, cached model responses, map configuration and public reference
 material are shared. New model calls can incur costs in either workspace; the selector
 is not a billing or security boundary. Legacy `/api/*`, CLI scripts and Streamlit use
