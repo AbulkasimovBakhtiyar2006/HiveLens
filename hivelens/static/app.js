@@ -35,13 +35,13 @@ const hydrateIcons = (root = document) =>
   });
 
 const VIEWS = {
-  overview: "Fleet Overview",
-  inspect: "New Inspection",
-  history: "Colony Records & Audit",
-  benchmark: "Validation Benchmark",
-  method: "System Architecture",
+  overview: "Overview",
+  inspect: "New inspection",
+  history: "Hive records",
+  benchmark: "Benchmark",
+  method: "How it works",
 };
-const STATUS = { good: "Normal", watch: "Watch", act: "Critical", unknown: "Uninspected" };
+const STATUS = { good: "Normal", watch: "Watch", act: "Critical", unknown: "No data" };
 const statusOf = (s) => (Object.hasOwn(STATUS, s) ? s : "unknown");
 const badge = (s) => `<span class="badge ${statusOf(s)}">${STATUS[statusOf(s)]}</span>`;
 
@@ -107,6 +107,7 @@ function applyTheme(theme) {
 let state = null;
 let view = "overview";
 let selectedHive = store.get("hive");
+let selectedFarm = store.get("farm", "all");
 let statusFilter = "all";
 let sortAscending = true;
 let historyController = null;
@@ -190,6 +191,7 @@ function route() {
     key === view ? link.setAttribute("aria-current", "page") : link.removeAttribute("aria-current");
   }
   $("topbar-title").textContent = VIEWS[view];
+  $("topbar-colony-pill").hidden = !["inspect", "history"].includes(view);
   document.title = `${VIEWS[view]} · HiveLens`;
   window.scrollTo({ top: 0, behavior: "instant" });
   renderView();
@@ -212,13 +214,13 @@ async function loadState() {
       selectedHive = measuredHives[0]?.id || state.hives[0]?.id || null;
     }
     const conn = $("api-state");
-    conn.innerHTML = `<i></i>${state.has_api_key ? "ONLINE" : "NO KEY"}`;
+    conn.innerHTML = `<i></i>${state.has_api_key ? "Connected" : "No API key"}`;
     conn.classList.toggle("offline", !state.has_api_key);
     conn.title = state.has_api_key
       ? `Meta Model API active: ${state.segment_model} + ${state.reasoning_model}`
       : "Set MODEL_API_KEY in .env to run an analysis.";
     $("version").textContent = state.version ? `v${state.version}` : "v0.1";
-    $("models").textContent = `${state.segment_model} · ${state.reasoning_model}`;
+    $("models").textContent = `${state.segment_model}, ${state.reasoning_model}`;
     syncHiveSelects();
     populateSamples();
     renderView();
@@ -227,7 +229,7 @@ async function loadState() {
   } catch (e) {
     $("load-error-text").textContent = `Could not load the workspace. ${e.message}`;
     $("load-error").hidden = false;
-    $("api-state").innerHTML = "<i></i>OFFLINE";
+    $("api-state").innerHTML = "<i></i>Offline";
     $("api-state").classList.add("offline");
     return false;
   }
@@ -235,45 +237,26 @@ async function loadState() {
 
 function syncHiveSelects() {
   const byId = Object.fromEntries((state.apiary?.hives || []).map((h) => [h.id, h]));
-  const sorted = [...state.hives].sort((a, b) => {
-    const sa = isSynthetic(byId[a.id] || a);
-    const sb = isSynthetic(byId[b.id] || b);
-    if (sa !== sb) return sa ? 1 : -1;
-    return a.name.localeCompare(b.name, undefined, { numeric: true });
-  });
-  const options = sorted.length
-    ? sorted
-        .map((h) => {
-          const syn = isSynthetic(byId[h.id] || h);
-          return `<option value="${esc(h.id)}">${esc(displayName(h))} [${syn ? "SYNTHETIC" : "MEASURED"}]</option>`;
-        })
-        .join("")
-    : '<option value="">No colonies registered</option>';
+  if (selectedFarm !== "all" && !farmByKey(selectedFarm)) selectedFarm = "all";
+  const option = (h) => {
+    const syn = isSynthetic(byId[h.id] || h);
+    return `<option value="${esc(h.id)}">${esc(displayName(h))}${syn ? " (demo)" : ""}</option>`;
+  };
+  const groups = farms()
+    .map((f) => {
+      const members = state.hives.filter((h) => farmKey((byId[h.id] || h).farm_id ?? null) === farmKey(f.id)).sort(byHiveName);
+      return members.length ? `<optgroup label="${esc(f.name)}">${members.map(option).join("")}</optgroup>` : "";
+    })
+    .join("");
+  const options = groups || '<option value="">No hives yet</option>';
   for (const id of ["inspection-hive", "history-hive"]) {
     $(id).innerHTML = options;
     $(id).value = selectedHive || "";
   }
 
-  // Update Topbar Context Pill & Left Sidebar Colony List
-  const activeObj = byId[selectedHive];
-  $("topbar-colony-pill").textContent = activeObj
-    ? `Colony: ${displayName(activeObj)} (${isSynthetic(activeObj) ? "Synthetic" : "Measured"})`
-    : "No colony selected";
-
-  const sideList = $("sidebar-hive-list");
-  if (sideList) {
-    sideList.innerHTML = sorted
-      .map((h) => {
-        const info = byId[h.id] || h;
-        const s = statusOf(info.overall);
-        const mpd = info.mites_per_day != null ? `${num(info.mites_per_day)}/d` : "—";
-        return `<button type="button" class="side-hive-btn ${h.id === selectedHive ? "active" : ""}" data-hive="${esc(h.id)}" data-destination="history">
-          <span class="side-hive-left"><i class="dot ${s}"></i><span class="side-hive-name">${esc(displayName(h))}</span></span>
-          <span class="side-hive-meta">${esc(mpd)}</span>
-        </button>`;
-      })
-      .join("");
-  }
+  const active = byId[selectedHive];
+  $("topbar-colony-pill").textContent = active ? `${farmName(active.farm_id)} / ${shortName(active)}` : "";
+  renderFarmNav();
 }
 
 function selectHive(id, destination) {
@@ -281,6 +264,11 @@ function selectHive(id, destination) {
   if (id !== selectedHive) selectedRecord = null;
   selectedHive = id;
   store.set("hive", id);
+  const hive = hives().find((h) => h.id === id);
+  if (hive && selectedFarm !== "all" && farmKey(hive.farm_id) !== selectedFarm) {
+    selectedFarm = farmKey(hive.farm_id);
+    store.set("farm", selectedFarm);
+  }
   syncHiveSelects();
   updateSummary();
   if (destination) go(destination);
@@ -292,45 +280,105 @@ function kpi(label, value, note, dot = "") {
   return `<div class="kpi"><div class="kpi-label">${dot ? `<i class="dot ${dot}"></i>` : ""}${esc(label)}</div><div class="kpi-value">${esc(value)}</div><div class="kpi-note">${esc(note)}</div></div>`;
 }
 
-function renderSpatialMap(all, links) {
-  const mapEl = $("apiary-map-svg");
-  const sideEl = $("apiary-drift-panel");
-  if (!all.length) {
-    $("apiary-map-card").hidden = true;
-    return;
+/* ── Farms ───────────────────────────────────────────────────────────── */
+// A farm key is the farm id, or "unassigned" for hives without a farm.
+const farmKey = (id) => id ?? "unassigned";
+const farms = () => state?.apiary?.farms || [];
+const farmByKey = (key) => farms().find((f) => farmKey(f.id) === key);
+const farmName = (id) => farmByKey(farmKey(id))?.name || "Unassigned";
+const hivesOfFarm = (key) => hives().filter((h) => farmKey(h.farm_id) === key);
+const hivesInView = () => (selectedFarm === "all" ? hives() : hivesOfFarm(selectedFarm));
+const shortName = (h) => displayName(h).split("·")[0].trim();
+const byHiveName = (a, b) =>
+  Number(isSynthetic(a)) - Number(isSynthetic(b)) || a.name.localeCompare(b.name, undefined, { numeric: true });
+
+function selectFarm(key) {
+  selectedFarm = key === "all" || farmByKey(key) ? key : "all";
+  store.set("farm", selectedFarm);
+  renderFarmNav();
+  go("overview");
+}
+
+function renderFarmNav() {
+  const el = $("farm-list");
+  if (!el || !state) return;
+  const item = (key, label, count, status) =>
+    `<button type="button" class="farm-btn" data-farm="${esc(key)}" aria-current="${selectedFarm === key}">
+      <i class="dot ${status}"></i><span class="farm-name">${esc(label)}</span><span class="farm-count">${count}</span>
+    </button>`;
+  let html = item("all", "All farms", hives().length, "none");
+  for (const f of farms()) {
+    const key = farmKey(f.id);
+    html += `<div class="farm-group">${item(key, f.name, f.hive_count, f.hive_count ? statusOf(f.overall) : "unknown")}`;
+    if (selectedFarm === key) {
+      const members = hivesOfFarm(key).sort(byHiveName);
+      html += members.length
+        ? `<ul class="farm-hives">${members
+            .map(
+              (h) => `<li><button type="button" class="farm-hive" data-hive="${esc(h.id)}" data-destination="history" aria-current="${h.id === selectedHive}">
+                <i class="dot ${statusOf(h.overall)}"></i><span class="farm-name">${esc(shortName(h))}</span><span class="farm-count">${h.mites_per_day != null ? num(h.mites_per_day) : "–"}</span>
+              </button></li>`,
+            )
+            .join("")}</ul>`
+        : '<p class="farm-empty">No hives yet.</p>';
+    }
+    html += "</div>";
   }
-  $("apiary-map-card").hidden = false;
+  el.innerHTML = html;
+}
 
-  const xs = all.map((h) => h.x_m || 0);
-  const ys = all.map((h) => h.y_m || 0);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs, minX + 5);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys, minY + 3);
+function fillFarmSelect(select, current) {
+  const real = farms().filter((f) => f.id);
+  select.innerHTML =
+    real.map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("") + '<option value="">No farm</option>';
+  select.value = real.some((f) => f.id === current) ? current : real[0]?.id || "";
+}
 
+/* ── Yard maps, one per farm ─────────────────────────────────────────── */
+const mapSelection = {};
+
+function yardSvg(key, members, links) {
+  const byId = Object.fromEntries(members.map((h) => [h.id, h]));
+  const xs = members.map((h) => h.x_m || 0);
+  const ys = members.map((h) => h.y_m || 0);
+  const minX = Math.floor(Math.min(...xs));
+  const maxX = Math.max(Math.ceil(Math.max(...xs)), minX + 4);
+  const minY = Math.floor(Math.min(...ys));
+  const maxY = Math.max(Math.ceil(Math.max(...ys)), minY + 1);
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+
+  // One scale for both axes, so distances on screen match the yard.
   const W = 720;
-  const H = 280;
-  const padX = 72;
-  const padY = 52;
-  const sx = (x) => padX + ((x - minX) / Math.max(1, maxX - minX)) * (W - padX * 2);
-  const sy = (y) => padY + ((y - minY) / Math.max(1, maxY - minY)) * (H - padY * 2);
+  const pad = { l: 84, r: 48, t: 44, b: 64 };
+  const scale = Math.min((W - pad.l - pad.r) / spanX, 90, (440 - pad.t - pad.b) / spanY);
+  const H = Math.round(spanY * scale + pad.t + pad.b);
+  const offX = pad.l + (W - pad.l - pad.r - spanX * scale) / 2;
+  const sx = (x) => offX + (x - minX) * scale;
+  const sy = (y) => pad.t + (y - minY) * scale;
+  const tw = 64;
+  const th = 46;
 
-  const byId = Object.fromEntries(all.map((h) => [h.id, h]));
-  const colorMap = {
-    good: "var(--good)",
-    watch: "var(--watch)",
-    act: "var(--act)",
-    unknown: "var(--muted)",
+  const tone = {
+    good: ["var(--good)", "var(--good-soft)"],
+    watch: ["var(--watch)", "var(--watch-soft)"],
+    act: ["var(--act)", "var(--act-soft)"],
+    unknown: ["var(--border-strong)", "var(--surface-2)"],
   };
 
-  let gridSvg = "";
-  for (let gx = 0; gx <= Math.ceil(maxX); gx += 2.5) {
-    const px = sx(gx);
-    gridSvg += `<line x1="${px.toFixed(1)}" y1="16" x2="${px.toFixed(1)}" y2="${H - 22}" stroke="var(--border)" stroke-dasharray="2 3"/>`;
-    gridSvg += `<text x="${px.toFixed(1)}" y="${H - 6}" text-anchor="middle" fill="var(--muted)" font-size="10" font-family="var(--mono)">${gx.toFixed(1)}m</text>`;
+  let grid = "";
+  for (let gx = minX; gx <= maxX; gx += 1) {
+    const px = sx(gx).toFixed(1);
+    grid += `<line class="map-grid" x1="${px}" y1="${pad.t - 26}" x2="${px}" y2="${H - pad.b + 30}"/>`;
+    grid += `<text class="map-axis" x="${px}" y="${H - 12}" text-anchor="middle">${gx} m</text>`;
+  }
+  for (let gy = minY; gy <= maxY; gy += 1) {
+    const py = sy(gy).toFixed(1);
+    grid += `<line class="map-grid" x1="${(offX - tw / 2 - 8).toFixed(1)}" y1="${py}" x2="${(offX + spanX * scale + 34).toFixed(1)}" y2="${py}"/>`;
+    grid += `<text class="map-axis" x="${(offX - tw / 2 - 14).toFixed(1)}" y="${(sy(gy) + 3.5).toFixed(1)}" text-anchor="end">${gy} m</text>`;
   }
 
-  const vecSvg = (links || [])
+  const edges = links
     .map((l) => {
       const a = byId[l.from_id];
       const b = byId[l.to_id];
@@ -339,71 +387,154 @@ function renderSpatialMap(all, links) {
       const y1 = sy(a.y_m);
       const x2 = sx(b.x_m);
       const y2 = sy(b.y_m);
-      const mx = (x1 + x2) / 2;
-      const my = (y1 + y2) / 2 - 8;
-      const col = l.risk === "high" ? "var(--act)" : "var(--watch)";
-      return `<g>
-        <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${col}" stroke-width="1.75" class="drift-vec"/>
-        <rect x="${(mx - 20).toFixed(1)}" y="${(my - 7).toFixed(1)}" width="40" height="14" rx="2" fill="var(--surface)" stroke="${col}" stroke-width="1"/>
-        <text x="${mx.toFixed(1)}" y="${(my + 3).toFixed(1)}" text-anchor="middle" fill="${col}" font-size="9" font-family="var(--mono)" font-weight="600">${l.distance_m}m</text>
-      </g>`;
+      const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+      const ux = (x2 - x1) / len;
+      const uy = (y2 - y1) / len;
+      // Stop the line at the tile edge (tiles are rectangles, so the gap depends on direction).
+      const gap = Math.min(Math.abs(ux) > 1e-6 ? tw / 2 / Math.abs(ux) : Infinity, Math.abs(uy) > 1e-6 ? th / 2 / Math.abs(uy) : Infinity) + 6;
+      return `<line class="map-link ${l.risk === "high" ? "high" : ""}" x1="${(x1 + ux * gap).toFixed(1)}" y1="${(y1 + uy * gap).toFixed(1)}" x2="${(x2 - ux * gap).toFixed(1)}" y2="${(y2 - uy * gap).toFixed(1)}"><title>${esc(shortName(a))} to ${esc(shortName(b))}: ${esc(l.distance_m)} m, ${esc(l.risk)} exposure</title></line>`;
     })
     .join("");
 
-  const nodesSvg = all
+  const nodes = members
     .map((h) => {
       const cx = sx(h.x_m);
       const cy = sy(h.y_m);
       const s = statusOf(h.overall);
-      const col = colorMap[s];
+      const [stroke, fill] = tone[s];
       const measured = !isSynthetic(h);
-      const shortName = displayName(h).split("·")[0].trim();
-      const mpd = h.mites_per_day != null ? `${num(h.mites_per_day)}/d` : "—";
-      return `<g class="map-node" data-hive="${esc(h.id)}" data-destination="history">
-        <title>${esc(displayName(h))} (${measured ? "Measured" : "Synthetic"}) · ${mpd} mites/day</title>
-        <rect x="${(cx - 32).toFixed(1)}" y="${(cy - 20).toFixed(1)}" width="64" height="40" rx="4" fill="var(--surface)" stroke="${col}" stroke-width="${measured ? 2.2 : 1.5}"/>
-        <text x="${cx.toFixed(1)}" y="${(cy - 4).toFixed(1)}" text-anchor="middle" fill="var(--text)" font-size="10" font-weight="600">${esc(shortName)}</text>
-        <text x="${cx.toFixed(1)}" y="${(cy + 10).toFixed(1)}" text-anchor="middle" fill="${col}" font-size="9.5" font-family="var(--mono)" font-weight="600">${esc(mpd)}</text>
+      const selected = mapSelection[key] === h.id;
+      const x = (cx - tw / 2).toFixed(1);
+      const y = (cy - th / 2).toFixed(1);
+      const value = h.mites_per_day != null ? num(h.mites_per_day) : "–";
+      const label = `${displayName(h)}, ${STATUS[s]}, ${h.mites_per_day != null ? `${num(h.mites_per_day)} mites per day` : "no inspection"}${measured ? ", measured" : ""}`;
+      return `<g class="map-node${measured ? " measured" : ""}${selected ? " selected" : ""}" data-map-hive="${esc(h.id)}" data-map-farm="${esc(key)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${esc(label)}">
+        <title>${esc(label)}</title>
+        ${measured || selected ? `<rect class="map-ring" x="${(cx - tw / 2 - 5).toFixed(1)}" y="${(cy - th / 2 - 5).toFixed(1)}" width="${tw + 10}" height="${th + 10}" rx="13"/>` : ""}
+        <rect class="map-tile" x="${x}" y="${y}" width="${tw}" height="${th}" rx="9" fill="${fill}" stroke="${stroke}"/>
+        <text class="map-value" x="${cx.toFixed(1)}" y="${(cy + 1).toFixed(1)}" text-anchor="middle">${esc(value)}</text>
+        <text class="map-unit" x="${cx.toFixed(1)}" y="${(cy + 14).toFixed(1)}" text-anchor="middle">mites/day</text>
+        <text class="map-label" x="${cx.toFixed(1)}" y="${(cy + th / 2 + 17).toFixed(1)}" text-anchor="middle">${esc(shortName(h))}</text>
       </g>`;
     })
     .join("");
 
-  mapEl.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Spatial apiary coordinate matrix">${gridSvg}${vecSvg}${nodesSvg}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="group" aria-label="Yard map, hive positions in metres">${grid}${edges}${nodes}</svg>`;
+}
 
-  let sideHtml = `<h4>Contagion Risk Links (${(links || []).length})</h4>`;
-  if (links?.length) {
-    sideHtml += links
-      .map(
-        (l) => `<button type="button" class="drift-item ${l.risk === "high" ? "high" : ""}" data-hive="${esc(l.to_id)}" data-destination="history" style="text-align:left">
-          <div class="drift-item-top"><span>${esc(l.from_name.replace(/\s*\(synthetic\)/i, ""))} → ${esc(l.to_name.replace(/\s*\(synthetic\)/i, ""))}</span><span class="tag">${l.distance_m} m</span></div>
-          <small>Exposure: ${esc(l.risk.toUpperCase())} · Source drop: ${num(byId[l.from_id]?.mites_per_day)}/d</small>
-        </button>`,
-      )
-      .join("");
-  } else {
-    sideHtml += `<p class="hint">No active mite-drift contagion links within 4.0 m.</p>`;
+function hiveDetail(h) {
+  if (!h) return '<p class="map-hint">Select a hive on the map to see its latest numbers.</p>';
+  const s = statusOf(h.overall);
+  const stat = (label, v, unit) => `<div><dt>${label}</dt><dd>${v != null ? `${num(v)}${unit ? `<small>${unit}</small>` : ""}` : "–"}</dd></div>`;
+  return `<div class="map-detail">
+    <div class="map-detail-head">
+      <strong>${esc(displayName(h))}</strong>${badge(s)}
+    </div>
+    <p class="map-detail-meta">${isSynthetic(h) ? "Demo data" : "Measured"}${h.latest_date ? `, last inspected ${esc(dateLabel(h.latest_date))}` : ", not inspected yet"}</p>
+    <dl class="map-stats">
+      ${stat("Mites per day", h.mites_per_day, "")}
+      ${stat("Honey", h.honey_kg_hive_est, "kg")}
+      ${stat("Brood", h.brood_total_pct, "%")}
+      ${stat("Stores", h.stores_weeks, "wk")}
+    </dl>
+    ${h.flags?.length ? `<p class="map-flag ${s}">${esc(h.flags[0])}</p>` : ""}
+    <div class="map-detail-actions">
+      <button type="button" class="btn sm primary" data-hive="${esc(h.id)}" data-destination="history">Open records</button>
+      <button type="button" class="btn sm" data-hive="${esc(h.id)}" data-destination="inspect">New inspection</button>
+    </div>
+  </div>`;
+}
+
+function farmMapPanel(key, members, links, showFarmName) {
+  const farm = farmByKey(key);
+  const title = showFarmName ? `${farm?.name || "Unassigned"}` : "Yard map";
+  const sub = showFarmName
+    ? `${farm?.location ? `${farm.location}. ` : ""}${members.length} hive${members.length === 1 ? "" : "s"}, drawn to scale.`
+    : "Hive positions to scale. Lines link critical hives to neighbours within 4 m.";
+  const head = `<header class="panel-head">
+      <div class="panel-title-group"><h2>${esc(title)}</h2><span class="sub-text">${esc(sub)}</span></div>
+      <div class="map-legend">
+        <span><i class="dot good"></i>Below 3</span><span><i class="dot watch"></i>3–10</span><span><i class="dot act"></i>10+</span>
+        <span><i class="key-line high"></i>High exposure</span><span><i class="key-line"></i>Moderate</span><span><i class="key-ring"></i>Measured</span>
+      </div>
+    </header>`;
+  if (!members.length) {
+    return `<section class="panel farm-map">${head}${emptyState(
+      "No hives on this farm yet",
+      "Add a hive to place it on the yard map.",
+      '<button class="btn primary sm" type="button" data-add-hive>Add hive</button>',
+    )}</section>`;
   }
-  sideEl.innerHTML = sideHtml;
+  if (mapSelection[key] && !members.some((h) => h.id === mapSelection[key])) delete mapSelection[key];
+  const byId = Object.fromEntries(members.map((h) => [h.id, h]));
+  const sorted = [...links].sort((a, b) => Number(b.risk === "high") - Number(a.risk === "high") || a.distance_m - b.distance_m);
+  const pairs = sorted.length
+    ? sorted
+        .map(
+          (l) => `<button type="button" class="drift-item ${l.risk === "high" ? "high" : ""}" data-map-hive="${esc(l.to_id)}" data-map-farm="${esc(key)}">
+            <span class="drift-item-top"><span>${esc(shortName(byId[l.from_id] || { name: l.from_name }))} → ${esc(shortName(byId[l.to_id] || { name: l.to_name }))}</span><span class="drift-dist">${esc(l.distance_m)} m</span></span>
+            <small>${l.risk === "high" ? "High" : "Moderate"} exposure, source ${num(byId[l.from_id]?.mites_per_day)} mites/day</small>
+          </button>`,
+        )
+        .join("")
+    : '<p class="hint">No hive is within 4 m of a critical hive.</p>';
+  return `<section class="panel farm-map" data-farm-map="${esc(key)}">
+    ${head}
+    <div class="map-workspace">
+      <div class="apiary-map-canvas">${yardSvg(key, members, links)}</div>
+      <aside class="drift-sidebar">
+        ${hiveDetail(byId[mapSelection[key]])}
+        <h4>Exposed pairs <span class="count">${sorted.length}</span></h4>
+        <div class="drift-list">${pairs}</div>
+      </aside>
+    </div>
+  </section>`;
+}
+
+function renderFarmMaps() {
+  const wrap = $("farm-maps");
+  if (!wrap) return;
+  const links = state?.apiary?.drift_links || [];
+  const keys = selectedFarm === "all" ? farms().filter((f) => f.hive_count).map((f) => farmKey(f.id)) : [selectedFarm];
+  wrap.innerHTML = keys
+    .map((key) => {
+      const members = hivesOfFarm(key);
+      const ids = new Set(members.map((h) => h.id));
+      return farmMapPanel(key, members, links.filter((l) => ids.has(l.from_id) && ids.has(l.to_id)), selectedFarm === "all");
+    })
+    .join("");
+}
+
+function pickMapHive(key, id) {
+  mapSelection[key] = mapSelection[key] === id ? undefined : id;
+  renderFarmMaps();
+  const node = document.querySelector(`[data-farm-map="${CSS.escape(key)}"] .map-node[data-map-hive="${CSS.escape(id)}"]`);
+  node?.focus({ preventScroll: true });
 }
 
 function renderOverview() {
-  const all = hives();
+  const all = hivesInView();
   const count = (s) => all.filter((h) => h.overall === s).length;
   const measuredCount = all.filter((h) => !isSynthetic(h)).length;
-  const driftRiskCount = state?.apiary?.summary?.at_drift_risk ?? 0;
-  const inspections = all.reduce((n, h) => n + h.inspection_count, 0);
+  const driftRiskCount = all.filter((h) => h.drift_risk_from?.length && h.overall !== "act").length;
+  const farm = selectedFarm === "all" ? null : farmByKey(selectedFarm);
+  const farmCount = farms().filter((f) => f.id).length;
+  $("overview-title").textContent = farm ? farm.name : "All farms";
+  $("overview-sub").textContent = farm
+    ? `${farm.location ? `${farm.location}. ` : ""}Latest inspection of each hive on this farm.`
+    : `${farmCount} farm${farmCount === 1 ? "" : "s"}, ${hives().length} hives. Latest inspection of each hive.`;
 
   $("overview-stats").innerHTML =
-    kpi("Monitored Colonies", all.length, `${measuredCount} measured · ${all.length - measuredCount} synthetic`, "") +
-    kpi("Normal Status", count("good"), "Within threshold (<3.0/d)", "good") +
-    kpi("Watch Status", count("watch"), "Elevated drop (3.0–9.9/d)", "watch") +
-    kpi("Critical Action", count("act"), "Above threshold (≥10.0/d)", "act") +
-    kpi("Drift Exposure", driftRiskCount, `${inspections} total inspection records`, "watch");
+    kpi("Hives", all.length, `${measuredCount} measured, ${all.length - measuredCount} demo`, "") +
+    kpi("Normal", count("good"), "Below 3 mites/day", "good") +
+    kpi("Watch", count("watch"), "3–10 mites/day", "watch") +
+    kpi("Critical", count("act"), "10+ mites/day", "act") +
+    kpi("Drift exposure", driftRiskCount, "Within 4 m of a critical hive", "watch");
 
   const urgent = all.filter((h) => h.overall === "act").sort((a, b) => Number(isSynthetic(a)) - Number(isSynthetic(b)));
   $("attention").hidden = !urgent.length;
   $("attention").innerHTML = urgent.length
-    ? `<div class="attention-head">${icon("alert")}Critical Action Required (${urgent.length})</div>` +
+    ? `<div class="attention-head">${icon("alert")}Requires action (${urgent.length})</div>` +
       urgent
         .map(
           (h) =>
@@ -412,14 +543,14 @@ function renderOverview() {
         .join("")
     : "";
 
-  renderSpatialMap(all, state?.apiary?.drift_links || []);
+  renderFarmMaps();
 
   const filters = [
     ["all", "All", all.length],
     ["act", "Critical", count("act")],
     ["watch", "Watch", count("watch")],
     ["good", "Normal", count("good")],
-    ["unknown", "Uninspected", count("unknown")],
+    ["unknown", "No data", count("unknown")],
   ];
   $("status-filter").innerHTML = filters
     .map(
@@ -431,13 +562,13 @@ function renderOverview() {
 }
 
 function renderHiveGrid() {
-  const all = hives();
+  const all = hivesInView();
   const query = $("hive-search").value.toLocaleLowerCase().trim();
   const source = $("source-filter").value;
   const list = all
     .filter(
       (h) =>
-        (!query || `${h.name} ${h.location}`.toLocaleLowerCase().includes(query)) &&
+        (!query || `${h.name} ${h.location} ${farmName(h.farm_id)}`.toLocaleLowerCase().includes(query)) &&
         (statusFilter === "all" || statusOf(h.overall) === statusFilter) &&
         (source === "all" || (source === "synthetic" ? isSynthetic(h) : !isSynthetic(h))),
     )
@@ -451,8 +582,8 @@ function renderHiveGrid() {
   $("hive-grid").innerHTML = list.map(hiveRow).join("");
   $("hive-empty").hidden = list.length > 0;
   $("hive-empty").innerHTML = all.length
-    ? `${icon("search")}<h3>No matching records</h3><p>Adjust your search query, status filter, or data source selector.</p>`
-    : `${icon("hive")}<h3>No colonies registered</h3><p>Register a colony to begin recording inspections.</p><button class="btn primary sm" type="button" data-add-hive>${icon("plus")}Register Colony</button>`;
+    ? `${icon("search")}<h3>No hives match</h3><p>Clear the search or change the filters.</p>`
+    : `${icon("hive")}<h3>No hives yet</h3><p>Add a hive to start recording inspections.</p><button class="btn primary sm" type="button" data-add-hive>${icon("plus")}Add hive</button>`;
 }
 
 function hiveRow(h) {
@@ -465,8 +596,8 @@ function hiveRow(h) {
       : '<span class="muted">—</span>';
   return `<tr class="${syn ? "" : "measured-row"}">
     <td class="strong"><a href="#history" data-hive="${esc(h.id)}" data-destination="history" style="text-decoration:none">${esc(displayName(h))}</a></td>
-    <td class="muted">${esc(h.location || "—")}</td>
-    <td>${syn ? '<span class="tag demo">Synthetic</span>' : '<span class="tag measured">Measured</span>'}</td>
+    <td class="muted">${esc(farmName(h.farm_id))}</td>
+    <td>${syn ? '<span class="tag demo">Demo data</span>' : '<span class="tag measured">Measured</span>'}</td>
     <td>${badge(s)}</td>
     <td class="num strong">${h.mites_per_day != null ? `${num(h.mites_per_day)} /d` : "—"}</td>
     <td class="num">${delta}</td>
@@ -474,7 +605,7 @@ function hiveRow(h) {
     <td class="num">${h.brood_total_pct != null ? `${num(h.brood_total_pct)}%` : "—"}</td>
     <td class="num">${h.stores_weeks != null ? `${num(h.stores_weeks)} wk` : "—"}</td>
     <td class="muted">${h.latest_date ? `${esc(dateLabel(h.latest_date))} (${h.inspection_count})` : "None"}</td>
-    <td class="num"><button type="button" class="btn sm" data-hive="${esc(h.id)}" data-destination="history">Open Dossier</button></td>
+    <td class="num"><button type="button" class="btn sm" data-hive="${esc(h.id)}" data-destination="history">Open</button></td>
   </tr>`;
 }
 
@@ -523,18 +654,18 @@ function updateSummary() {
   const hive = state.hives.find((h) => h.id === selectedHive);
   const row = (label, value, cls = "") => `<li><span>${label}</span><b class="${cls}" title="${esc(value)}">${esc(value)}</b></li>`;
   $("inspect-summary").innerHTML =
-    row("Target Colony", hive ? displayName(hive) : "Unselected", hive ? "" : "missing") +
-    row("Inspection Date", dateLabel($("inspection-date").value)) +
-    row("Sticky Board", boardFile ? boardFile.name : sample ? sample : "None", boardFile || sample ? "ok" : "missing") +
-    row("Comb Frames", frames ? `${frames} image${frames === 1 ? "" : "s"}` : "None", frames ? "ok" : "missing") +
-    row("Resolution Mode", $("inspection-depth").value === "thorough" ? "Multi-Pass (600/300px)" : "Single-Pass (600px)") +
-    row("Claim Audit Gate", $("inspection-agent").checked ? "Enabled" : "Disabled");
+    row("Hive", hive ? displayName(hive) : "Not chosen", hive ? "" : "missing") +
+    row("Date", dateLabel($("inspection-date").value)) +
+    row("Sticky board", boardFile ? boardFile.name : sample ? sample : "None", boardFile || sample ? "ok" : "missing") +
+    row("Frames", frames ? `${frames} image${frames === 1 ? "" : "s"}` : "None", frames ? "ok" : "missing") +
+    row("Board reading", $("inspection-depth").value === "thorough" ? "Thorough" : "Fast") +
+    row("Report", $("inspection-agent").checked ? "On" : "Off");
   let hint = "";
-  if (!state.has_api_key) hint = "Configure MODEL_API_KEY in .env to execute.";
-  else if (!hive) hint = "Register a colony first.";
-  else if (!boardFile && !sample && !frames) hint = "Provide at least one optical input.";
-  else if (activeJob) hint = "Pipeline execution in progress.";
-  else hint = "Ready for execution.";
+  if (!state.has_api_key) hint = "Add MODEL_API_KEY to .env to run inspections.";
+  else if (!hive) hint = "Add a hive first.";
+  else if (!boardFile && !sample && !frames) hint = "Add a board photo or at least one frame.";
+  else if (activeJob) hint = "An inspection is running.";
+  else hint = "Ready to run.";
   $("run-hint").textContent = hint;
 }
 
@@ -646,11 +777,11 @@ async function startInspection(event) {
   event.preventDefault();
   if (activeJob || startingJob) return;
   if (!$("inspection-form").reportValidity()) return;
-  if (!selectedHive) return toast("Register a colony before starting an inspection.", true);
+  if (!selectedHive) return toast("Add a hive before you run an inspection.", true);
   const sample = $("board-sample").value;
   const frameSamples = checkedFrameSamples();
   if (!boardFile && !sample && !frameFiles.length && !frameSamples.length)
-    return toast("Add at least one sticky-board or frame image.", true);
+    return toast("Add a board photo or at least one frame.", true);
   if (frameFiles.length + frameSamples.length > 8) return toast("Choose up to 8 frame photos per inspection.", true);
 
   startingJob = true;
@@ -670,7 +801,7 @@ async function startInspection(event) {
     frame_samples: frameSamples,
   };
   try {
-    toast("Submitting optical inputs…");
+    toast("Uploading photos…");
     payload.board_b64 = board ? await readBase64(board) : null;
     payload.frames_b64 = [];
     for (const file of files) payload.frames_b64.push(await readBase64(file));
@@ -728,7 +859,7 @@ function attachJob(job) {
   $("job-spinner").className = "spinner";
   $("job-feed").textContent = "";
   setProgress(0);
-  $("job-title").textContent = job.kind === "inspection" ? "Running inspection pipeline…" : "Evaluating benchmark set…";
+  $("job-title").textContent = job.kind === "inspection" ? "Running inspection…" : "Running benchmark…";
   const stream = new EventSource(`/api/jobs/${encodeURIComponent(job.id)}/stream`);
   eventStream = stream;
   stream.onmessage = async (message) => {
@@ -752,7 +883,7 @@ function attachJob(job) {
     }
     if (ev.type === "error") finishJob(ev.error || "Analysis failed.", true);
     if (ev.type === "done") {
-      finishJob(job.kind === "inspection" ? "Inspection saved" : "Evaluation complete");
+      finishJob(job.kind === "inspection" ? "Inspection saved" : "Benchmark finished");
       setProgress(100);
       const link = $("job-result-link");
       if (job.kind === "inspection") {
@@ -771,7 +902,7 @@ function attachJob(job) {
     }
   };
   stream.onerror = () => {
-    if (activeJob?.id === job.id) $("job-title").textContent = "Reconnecting stream…";
+    if (activeJob?.id === job.id) $("job-title").textContent = "Reconnecting…";
   };
 }
 
@@ -784,9 +915,9 @@ async function loadHistory() {
     $("history-list").innerHTML = '<li class="tl-empty">No colonies registered.</li>';
     $("history-count").textContent = "";
     $("history-result").innerHTML = emptyState(
-      "No colonies registered",
-      "Register a colony, then run an inspection to initialize its record.",
-      `<button class="btn primary sm" type="button" data-add-hive>${icon("plus")}Register Colony</button>`,
+      "No hives yet",
+      "Add a hive, then run its first inspection.",
+      `<button class="btn primary sm" type="button" data-add-hive>${icon("plus")}Add hive</button>`,
     );
     $("export-hive").hidden = true;
     return;
@@ -816,8 +947,8 @@ async function loadHistory() {
       $("history-trends").innerHTML = "";
       $("history-list").innerHTML = '<li class="tl-empty">No records.</li>';
       $("history-result").innerHTML = emptyState(
-        "No inspection records",
-        "Submit sticky-board or comb imagery to create the first baseline record.",
+        "No inspections yet",
+        "Run an inspection with a board or frame photo to start this record.",
         `<button class="btn primary sm" type="button" data-go="inspect">${icon("scan")}New Inspection</button>`,
       );
       return;
@@ -828,7 +959,7 @@ async function loadHistory() {
   } catch (e) {
     if (e.name !== "AbortError")
       $("history-result").innerHTML = emptyState(
-        "Could not load colony history",
+        "Could not load this hive",
         e.message,
         '<button class="btn sm" type="button" data-retry-history>Retry</button>',
       );
@@ -846,7 +977,7 @@ function renderTimeline() {
         <i class="tl-dot ${s}"></i>
         <span class="tl-main">
           <strong>${esc(dateLabel(rec.date))}</strong>
-          <small>${STATUS[s]}${mpd != null ? ` · ${num(mpd)}/d` : ""}${rec.synthetic ? " · SYNTH" : hasEv ? " · AUDIT" : ""}</small>
+          <small>${STATUS[s]}${mpd != null ? ` · ${num(mpd)}/d` : ""}${rec.synthetic ? ", demo" : hasEv ? ", with evidence" : ""}</small>
         </span>
       </button></li>`;
     })
@@ -879,10 +1010,10 @@ function sparkline(points, label) {
 
 function renderTrends(rows) {
   const specs = [
-    ["Mite Drop Rate", "mites_per_day", "mites/d", true],
-    ["Estimated Honey", "honey_kg_hive_est", "kg", false],
-    ["Brood Coverage", "brood_total_pct", "%", false],
-    ["Food Reserve", "stores_weeks", "weeks", false],
+    ["Mites per day", "mites_per_day", "", true],
+    ["Honey", "honey_kg_hive_est", "kg", false],
+    ["Brood", "brood_total_pct", "%", false],
+    ["Stores", "stores_weeks", "weeks", false],
   ];
   $("history-trends").innerHTML = specs
     .map(([label, key, unit, higherIsWorse]) => {
@@ -926,7 +1057,7 @@ function compositionBar(m) {
     return rgb ? `rgb(${rgb.join(",")})` : "var(--muted)";
   };
   const label = (c) => state?.class_labels?.[c] || c;
-  return `<div class="composition"><h4>Comb Area Composition (% of visible comb)</h4><div class="comp-bar">${keys
+  return `<div class="composition"><h4>Comb, share of visible area</h4><div class="comp-bar">${keys
     .map(([c, k]) => `<i style="width:${((Math.max(0, m[k]) / total) * 100).toFixed(2)}%;background:${color(c)}" title="${esc(label(c))}: ${num(m[k])}%"></i>`)
     .join("")}</div><div class="comp-legend">${keys
     .map(([c, k]) => `<span><i style="background:${color(c)}"></i>${esc(label(c))} <b>${num(m[k])}%</b></span>`)
@@ -947,13 +1078,13 @@ function renderRecord(hiveId, rec, target) {
     `/api/file/${encodeURIComponent(hiveId)}/${encodeURIComponent(rec.id)}/${encodeURIComponent(name)}?max_side=${size}`;
 
   const metricDefs = [
-    ["Mites / Day", m.mites_per_day, "", m.mites_per_day_change],
-    ["Mites Counted", m.mite_count, ""],
-    ["Rejected Debris", m.rejected_detections, ""],
-    ["Brood Area", m.brood_total_pct, "%"],
-    ["Capped Honey", m.honey_pct, "%"],
-    ["Hive Honey Est.", m.honey_kg_hive_est, "kg"],
-    ["Food Reserve", m.stores_weeks, "wk"],
+    ["Mites per day", m.mites_per_day, "", m.mites_per_day_change],
+    ["Mites counted", m.mite_count, ""],
+    ["Rejected as debris", m.rejected_detections, ""],
+    ["Brood", m.brood_total_pct, "%"],
+    ["Capped honey", m.honey_pct, "%"],
+    ["Honey in hive", m.honey_kg_hive_est, "kg"],
+    ["Stores", m.stores_weeks, "wk"],
   ].filter(([, v]) => v != null);
   const metrics = metricDefs.length
     ? `<div class="metric-grid">${metricDefs
@@ -975,11 +1106,11 @@ function renderRecord(hiveId, rec, target) {
       const original = files[key.replace(/_overlay$/, "")];
       const board = key.startsWith("board");
       const src = fileUrl(files[key]);
-      const title = board ? "Sticky Board Detection Overlay" : `${key.replace(/_overlay$/, "").replaceAll("_", " ")} Segmentation Overlay`;
+      const title = board ? "Sticky board" : `${key.replace(/_overlay$/, "").replaceAll("_", " ")}`;
       const caption = board
-        ? "Green circle: SAM 3.1 detection · Blue circle: Muse Spark contact-sheet vote · Red cross: candidate rejected by morphological filter."
-        : "Yellow: capped honey · Brown: capped brood · White: larvae · Orange: pollen · Blue: empty/nectar · Grey: bees (occlusion).";
-      return `<figure class="figure"><div class="figure-head"><strong>${esc(title)}</strong>${original ? `<button class="link-btn" type="button" data-image="${esc(fileUrl(original, 2400))}">Raw Source Image ${icon("external")}</button>` : ""}</div><button type="button" data-image="${esc(fileUrl(files[key], 2400))}" aria-label="Enlarge ${esc(title)}"><img src="${esc(src)}" alt="${esc(title)}" loading="lazy" decoding="async"></button><figcaption>${caption}</figcaption></figure>`;
+        ? "Green: found by SAM 3.1. Blue: confirmed by Muse Spark. Red cross: rejected by the size and shape checks."
+        : "Yellow: capped honey. Brown: capped brood. White: larvae. Orange: pollen. Blue: empty or nectar. Grey: bees covering the comb.";
+      return `<figure class="figure"><div class="figure-head"><strong>${esc(title)}</strong>${original ? `<button class="link-btn" type="button" data-image="${esc(fileUrl(original, 2400))}">Original ${icon("external")}</button>` : ""}</div><button type="button" data-image="${esc(fileUrl(files[key], 2400))}" aria-label="Enlarge ${esc(title)}"><img src="${esc(src)}" alt="${esc(title)}" loading="lazy" decoding="async"></button><figcaption>${caption}</figcaption></figure>`;
     })
     .join("");
 
@@ -987,37 +1118,37 @@ function renderRecord(hiveId, rec, target) {
   const evidence = evidenceKeys.length
     ? `<div class="evidence">
         <div class="evidence-head">
-          <h4>Morphology Audit &amp; Contact-Sheet Evidence</h4>
-          <span class="tag measured">${evidenceKeys.length} Plates</span>
+          <h4>Evidence</h4>
+          <span class="tag measured">${evidenceKeys.length} images</span>
         </div>
         <div class="evidence-grid">${evidenceKeys
           .map((k) => {
             const label =
               k === "board_evidence"
-                ? "Morphology Audit: Counted & Rejected Candidates"
-                : `Muse Spark 6×6 Contact Sheet #${k.split("_").at(-1)}`;
+                ? "Counted and rejected spots"
+                : `Muse Spark sheet ${k.split("_").at(-1)}`;
             return `<button type="button" data-image="${esc(fileUrl(files[k], 2400))}"><img src="${esc(fileUrl(files[k], 600))}" alt="" loading="lazy"><span>${esc(label)}</span></button>`;
           })
           .join("")}</div>
       </div>`
     : "";
 
-  const urgency = { now: ["act", "Immediate"], this_week: ["watch", "This Week"], next_inspection: ["", "Next Inspection"] };
+  const urgency = { now: ["act", "Immediate"], this_week: ["watch", "This week"], next_inspection: ["", "Next inspection"] };
   const reportHtml = report
-    ? `<div class="report-summary"><strong>Executive Summary:</strong> ${esc(report.summary)}</div>
+    ? `<div class="report-summary"><strong>Summary</strong>${esc(report.summary)}</div>
       ${
         report.findings?.length
-          ? `<div class="report-section"><h4>Verified Findings</h4>${report.findings
-              .map((f) => `<div class="finding">${icon("check")}<div>${esc(f.text)}<br><small>Reference claims: ${esc((f.claim_ids || []).join(", "))}</small></div></div>`)
+          ? `<div class="report-section"><h4>Findings</h4>${report.findings
+              .map((f) => `<div class="finding">${icon("check")}<div>${esc(f.text)}<br><small>Based on claims ${esc((f.claim_ids || []).join(", "))}</small></div></div>`)
               .join("")}</div>`
           : ""
       }
       ${
         report.actions?.length
-          ? `<div class="report-section"><h4>Recommended Operational Actions</h4>${report.actions
+          ? `<div class="report-section"><h4>What to do</h4>${report.actions
               .map((a) => {
                 const [cls, text] = urgency[a.urgency] || ["", a.urgency || ""];
-                return `<div class="action"><div class="action-top"><strong>${esc(a.action)}</strong>${text ? `<span class="badge ${cls} plain">${esc(text)}</span>` : ""}</div>${a.reason ? `<p>Rationale: ${esc(a.reason)}</p>` : ""}</div>`;
+                return `<div class="action"><div class="action-top"><strong>${esc(a.action)}</strong>${text ? `<span class="badge ${cls} plain">${esc(text)}</span>` : ""}</div>${a.reason ? `<p>${esc(a.reason)}</p>` : ""}</div>`;
               })
               .join("")}</div>`
           : ""
@@ -1025,10 +1156,10 @@ function renderRecord(hiveId, rec, target) {
       ${report.caveats?.length ? `<div class="report-section"><h4>Caveats</h4>${report.caveats.map((c) => `<p class="caveat">${esc(c)}</p>`).join("")}</div>` : ""}
       ${
         report.discarded_findings?.length
-          ? `<div class="report-section"><h4>Suppressed Findings (Unverified)</h4>${report.discarded_findings.map((f) => `<p class="caveat"><s>${esc(f.text)}</s></p>`).join("")}</div>`
+          ? `<div class="report-section"><h4>Dropped, not backed by measurements</h4>${report.discarded_findings.map((f) => `<p class="caveat"><s>${esc(f.text)}</s></p>`).join("")}</div>`
           : ""
       }`
-    : '<p class="report-summary">Measurements only. Agent report generation was disabled for this record.</p>';
+    : '<p class="report-summary">Measurements only. No report was written for this inspection.</p>';
 
   const claims = rec.claims || [];
   const rejectedCount = claims.filter((c) => c.verdict === "rejected").length;
@@ -1036,11 +1167,11 @@ function renderRecord(hiveId, rec, target) {
   const claimsHtml = claims.length
     ? `<div class="claims-box">
         <div class="claims-box-head">
-          <h4>Epistemic Claim Verification Log (<code>check_claim</code>)</h4>
-          <span class="tag">${verifiedCount} Verified · ${rejectedCount} Rejected</span>
+          <h4>Claims checked against measurements</h4>
+          <span class="tag">${verifiedCount} verified, ${rejectedCount} rejected</span>
         </div>
         <table class="claims">
-          <thead><tr><th>Status</th><th>Hypothesis Statement</th><th>Measured Value</th></tr></thead>
+          <thead><tr><th>Result</th><th>Claim</th><th>Measured</th></tr></thead>
           <tbody>${claims
             .map(
               (c) =>
@@ -1058,20 +1189,20 @@ function renderRecord(hiveId, rec, target) {
   el.innerHTML = `<article class="panel record">
     <header class="record-head">
       <div>
-        <h2>Inspection Record: ${esc(dateLabel(rec.date))} ${badge(s)} ${rec.synthetic ? '<span class="tag demo">Synthetic</span>' : '<span class="tag measured">Measured</span>'}</h2>
-        <p>${esc(hiveName(hiveId))}${rec.models?.segmentation ? ` · Models: ${esc(rec.models.segmentation)} / ${esc(rec.models.reasoning)}` : ""}</p>
+        <h2>${esc(dateLabel(rec.date))} ${badge(s)} ${rec.synthetic ? '<span class="tag demo">Demo data</span>' : '<span class="tag measured">Measured</span>'}</h2>
+        <p>${esc(hiveName(hiveId))}${rec.models?.segmentation ? `, ${esc(rec.models.segmentation)} and ${esc(rec.models.reasoning)}` : ""}</p>
       </div>
       <button class="btn sm record-download" type="button">${icon("download")}Export JSON</button>
     </header>
     <div class="record-body">
-      ${rec.synthetic ? '<div class="alert warn">' + icon("info") + "<p>Synthetic scenario record: metrics are simulated for fleet demonstration. Select <b>Hive #7</b> to inspect camera-measured sticky-board and comb records.</p></div>" : ""}
+      ${rec.synthetic ? '<div class="alert warn">' + icon("info") + "<p>Demo record. These numbers are simulated to fill the apiary. <b>Hive #7</b> has real measurements from photos.</p></div>" : ""}
       ${flags}
       ${metrics}
       ${compositionBar(m)}
-      ${rec.inputs?.note ? `<p class="note"><b>Inspector note:</b> ${esc(rec.inputs.note)}</p>` : ""}
+      ${rec.inputs?.note ? `<p class="note"><b>Note:</b> ${esc(rec.inputs.note)}</p>` : ""}
       <div class="record-cols">
-        <div class="figures">${evidence}${overlays || emptyState("No optical attachments", rec.synthetic ? "Synthetic records do not include camera imagery." : "No overlay attached.")}</div>
-        <div class="report">${claimsHtml}${reportHtml}${rec.trace?.length ? '<details><summary>Execution Trace (' + rec.trace.length + ' tool events)</summary><pre class="trace-log"></pre></details>' : ""}</div>
+        <div class="figures">${evidence}${overlays || emptyState("No photos", rec.synthetic ? "Demo records have no photos." : "This inspection has no overlay.")}</div>
+        <div class="report">${claimsHtml}${reportHtml}${rec.trace?.length ? '<details><summary>Agent trace (' + rec.trace.length + ' tool calls)</summary><pre class="trace-log"></pre></details>' : ""}</div>
       </div>
     </div>
   </article>`;
@@ -1092,23 +1223,23 @@ function renderProofGallery() {
   const items = [
     {
       file: "IMG_5582_naive_vs_hivelens.jpg",
-      title: "Plate 1 — 49 MP Sticky Board: Baseline SAM 3.1 (0/21) vs. HiveLens (20/21)",
-      desc: "Single-pass full-board SAM 3.1 misses 30 px mites due to input downscaling. HiveLens combines 600 px + 300 px tiling, Muse Spark voting, and ellipse filtering.",
+      title: "Sticky board: SAM 3.1 alone finds 0 of 21 mites, HiveLens finds 20",
+      desc: "On the whole photo the 30 px mites are too small for SAM. HiveLens reads 600 px and 300 px tiles, asks Muse Spark about unclear spots and checks each shape.",
     },
     {
       file: "IMG_5582_evidence.jpg",
-      title: "Plate 2 — Morphological Audit Sheet: Counted vs. Rejected Detections",
-      desc: "High-magnification crops of all 20 counted mites and 9 rejected candidates showing fitted ellipses, aspect ratios, Δ(R−G) redness, and solidity.",
+      title: "Every counted and rejected spot",
+      desc: "Close-ups of the 20 counted mites and 9 rejected spots, with the size, colour and shape numbers behind each decision.",
     },
     {
       file: "IMG_5582_muse_sheet_1.jpg",
-      title: "Plate 3 — Muse Spark 6×6 Contact Sheet with Morphological Vetoes",
-      desc: "Unexplained dark candidates presented to Muse Spark. Blue borders denote confirmed mites; red crossed borders denote candidates vetoed by physical checks.",
+      title: "What Muse Spark was shown",
+      desc: "Spots SAM was unsure about. Blue: Muse Spark said mite. Red cross: Muse said mite, the shape checks disagreed.",
     },
     {
       file: "A_slice_of_the_brood_nest_naive_vs_hivelens.jpg",
-      title: "Plate 4 — Comb Frame: Text-Prompted SAM 3.1 vs. SAM Mask + Muse Grid",
-      desc: "Prompting SAM 3.1 with cell textures returns whole-frame regions (86–99%). HiveLens uses SAM for comb/bee geometry and Muse Spark for tile classification.",
+      title: "Frame: SAM 3.1 alone versus SAM with Muse Spark",
+      desc: "Asked for capped brood, SAM marks almost the whole frame. HiveLens uses SAM for the comb and bees, and Muse Spark labels each tile.",
     },
   ].filter((x) => imgs.includes(x.file));
 
@@ -1135,14 +1266,14 @@ function renderBenchmark() {
   const s = b?.summary;
   const rows = b?.images || [];
   $("benchmark-provenance").textContent = s
-    ? `Validation Protocol: ${s.images} held-out sticky boards (Boards 9–20) · ${s.experts_total} expert-annotated mites (Divasón et al. 2023, Zenodo CC BY 4.0) · Boards 1–${s.skipped_first ?? 8} were reserved for threshold calibration and are excluded.`
-    : "No saved evaluation found.";
+    ? `${s.images} test boards with ${s.experts_total} mites marked by experts. Boards 1–${s.skipped_first ?? 8} were used to tune the checks and are not counted here.`
+    : "No saved benchmark yet.";
   $("benchmark-stats").innerHTML =
-    kpi("Box-Match F1", num(s?.sam_f1, 3), s?.cv_f1 != null ? `Baseline CV: ${num(s.cv_f1, 3)}` : "Held-out test set", "good") +
-    kpi("Precision", num(s?.sam_precision, 3), "True positives / all predictions", "good") +
-    kpi("Recall", num(s?.sam_recall, 3), "Detected / expert ground truth", "watch") +
-    kpi("HiveLens MAE", `${num(s?.sam_mae, 2)}`, "Mites / board count error", "good") +
-    kpi("Baseline CV MAE", `${num(s?.cv_mae, 1)}`, "Threshold baseline error", "act");
+    kpi("F1", num(s?.sam_f1, 2), s?.cv_f1 != null ? `Classic method: ${num(s.cv_f1, 2)}` : "Test boards", "") +
+    kpi("Precision", num(s?.sam_precision, 2), "Counted mites that are real", "") +
+    kpi("Recall", num(s?.sam_recall, 2), "Real mites that were found", "") +
+    kpi("Count error", `${num(s?.sam_mae, 1)}`, "Mites per board, HiveLens", "") +
+    kpi("Classic method error", `${num(s?.cv_mae, 0)}`, "Mites per board, darkness threshold", "");
   $("benchmark-table").innerHTML = rows
     .map((r) => {
       const samOnly = Math.max(0, (r.sam || 0) - (r.muse_votes_kept || 0));
@@ -1161,7 +1292,7 @@ function renderBenchmark() {
     })
     .join("");
   if (!rows.length) {
-    $("benchmark-chart").innerHTML = emptyState("No benchmark records", "Run an evaluation to compare predictions against expert annotations.");
+    $("benchmark-chart").innerHTML = emptyState("No benchmark yet", "Run the benchmark to compare HiveLens with the expert counts.");
     return;
   }
   const W = Math.max(600, rows.length * 56);
@@ -1187,9 +1318,9 @@ function renderBenchmark() {
 
 /* ── Events ──────────────────────────────────────────────────────────── */
 document.addEventListener("click", (event) => {
-  const mapNode = event.target.closest(".map-node");
-  if (mapNode && mapNode.dataset.hive) {
-    selectHive(mapNode.dataset.hive, mapNode.dataset.destination || "history");
+  const mapTarget = event.target.closest("[data-map-hive]");
+  if (mapTarget) {
+    pickMapHive(mapTarget.dataset.mapFarm, mapTarget.dataset.mapHive);
     return;
   }
   const target = event.target.closest("button,a");
@@ -1206,9 +1337,15 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (target.dataset.go) go(target.dataset.go);
+  if (target.dataset.farm) selectFarm(target.dataset.farm);
   if (target.hasAttribute("data-add-hive")) {
+    fillFarmSelect($("new-hive-farm"), selectedFarm);
     $("add-hive-dialog").showModal();
     $("new-hive-name").focus();
+  }
+  if (target.hasAttribute("data-add-farm")) {
+    $("add-farm-dialog").showModal();
+    $("new-farm-name").focus();
   }
   if (target.dataset.close) $(target.dataset.close).close();
   if (target.dataset.hive) {
@@ -1297,21 +1434,47 @@ $("add-hive-form").addEventListener("submit", (event) => {
   const name = $("new-hive-name").value.trim();
   if (!name) return $("new-hive-name").focus();
   withButton($("create-hive"), async () => {
-    const data = await api("/api/hives", { name, location: $("new-hive-location").value.trim() });
+    const data = await api("/api/hives", {
+      name,
+      location: $("new-hive-location").value.trim(),
+      farm_id: $("new-hive-farm").value || null,
+    });
     selectedHive = data.hive.id;
     selectedRecord = null;
     store.set("hive", selectedHive);
     $("add-hive-dialog").close();
     $("add-hive-form").reset();
     await loadState();
-    toast(`${data.hive.name} registered.`);
+    toast(`${data.hive.name} added.`);
   });
+});
+$("add-farm-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const name = $("new-farm-name").value.trim();
+  if (!name) return $("new-farm-name").focus();
+  withButton($("create-farm"), async () => {
+    const data = await api("/api/farms", { name, location: $("new-farm-location").value.trim() });
+    $("add-farm-dialog").close();
+    $("add-farm-form").reset();
+    selectedFarm = data.farm.id;
+    store.set("farm", selectedFarm);
+    await loadState();
+    go("overview");
+    toast(`${data.farm.name} added.`);
+  });
+});
+document.addEventListener("keydown", (event) => {
+  const node = event.target.closest?.(".map-node");
+  if (node && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    pickMapHive(node.dataset.mapFarm, node.dataset.mapHive);
+  }
 });
 $("seed-demo").addEventListener("click", () =>
   withButton($("seed-demo"), async () => {
     const result = await api("/api/seed_apiary", {});
     await loadState();
-    toast(result.created ? `${result.created} synthetic colonies loaded.` : "Synthetic fleet is already loaded.");
+    toast(result.created ? `${result.created} demo hives added.` : "The demo farms are already loaded.");
   }),
 );
 $("fetch-frames").addEventListener("click", () =>

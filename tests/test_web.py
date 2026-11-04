@@ -97,3 +97,36 @@ def test_sse_resumes_after_last_event_without_replaying(web):
 
 def test_non_object_json_returns_error(web):
     assert web('/api/hives', ['not', 'an', 'object'])[0] == 400
+
+
+def test_farms_group_hives_and_keep_drift_inside_a_farm(web):
+    status, _, raw = web('/api/farms', {'name': 'North yard', 'location': 'Talgar'})
+    assert status == 200
+    north = json.loads(raw)['farm']['id']
+    south = json.loads(web('/api/farms', {'name': 'South yard'})[2])['farm']['id']
+    a = json.loads(web('/api/hives', {'name': 'A', 'farm_id': north})[2])['hive']
+    b = json.loads(web('/api/hives', {'name': 'B', 'farm_id': south})[2])['hive']
+    assert a['farm_id'] == north and b['farm_id'] == south
+    for hive in (a, b):  # both critical, and at the same yard position in their own farm
+        store.save_inspection(hive['id'], {'date': '2026-11-04', 'metrics': {'mites_per_day': 20},
+                                           'status': {'overall': 'act'}}, {}, {})
+    apiary = json.loads(web('/api/state')[2])['apiary']
+    assert {f['name']: f['hive_count'] for f in apiary['farms']} == {'North yard': 1, 'South yard': 1}
+    assert apiary['drift_links'] == []
+
+
+def test_hive_farm_must_exist(web):
+    assert web('/api/hives', {'name': 'X', 'farm_id': 'nowhere'})[0] == 400
+    hive = store.create_hive('Loose hive')
+    assert web('/api/hive_farm', {'hive_id': hive['id'], 'farm_id': 'nowhere'})[0] == 400
+    farm = store.create_farm('Home')
+    status, _, raw = web('/api/hive_farm', {'hive_id': hive['id'], 'farm_id': farm['id']})
+    assert status == 200 and json.loads(raw)['hive']['farm_id'] == farm['id']
+    assert web('/api/farms', {'name': ''})[0] == 400
+
+
+def test_hives_without_a_farm_are_listed_as_unassigned(web):
+    store.create_hive('Old hive')
+    farms = json.loads(web('/api/state')[2])['apiary']['farms']
+    assert farms == [{'id': None, 'name': 'Unassigned', 'location': '', 'hive_count': 1,
+                      'counts': {'good': 0, 'watch': 0, 'act': 0, 'unknown': 1}, 'overall': 'unknown'}]

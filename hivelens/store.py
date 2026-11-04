@@ -1,7 +1,8 @@
 """Hive registry: every hive keeps its inspections on disk, so trends build up over time.
 
 Layout:
-  data/hives/<hive_id>/hive.json
+  data/hives/farms.json                                 (farms: groups of hives on one site)
+  data/hives/<hive_id>/hive.json                        (a hive, with its farm_id)
   data/hives/<hive_id>/<inspection_id>/inspection.json  (+ photos, overlays)
 """
 
@@ -37,15 +38,62 @@ def list_hives() -> list[dict]:
     return out
 
 
-def create_hive(name: str, location: str = "") -> dict:
+def create_hive(name: str, location: str = "", farm_id: str | None = None) -> dict:
+    if farm_id is not None and get_farm(farm_id) is None:
+        raise ValueError(f"Unknown farm: {farm_id}")
     base = _slug(name)
     hive_id, n = base, 2
     while _hive_dir(hive_id).exists():
         hive_id, n = f"{base}-{n}", n + 1
-    hive = {"id": hive_id, "name": name, "location": location, "created": datetime.now().isoformat(timespec="seconds")}
+    hive = {"id": hive_id, "name": name, "location": location, "farm_id": farm_id,
+            "created": datetime.now().isoformat(timespec="seconds")}
     _hive_dir(hive_id).mkdir(parents=True, exist_ok=True)
     (_hive_dir(hive_id) / "hive.json").write_text(json.dumps(hive, indent=2))
     return hive
+
+
+def set_hive_farm(hive_id: str, farm_id: str | None) -> dict:
+    if farm_id is not None and get_farm(farm_id) is None:
+        raise ValueError(f"Unknown farm: {farm_id}")
+    path = _hive_dir(hive_id) / "hive.json"
+    hive = json.loads(path.read_text())
+    hive["farm_id"] = farm_id
+    path.write_text(json.dumps(hive, indent=2))
+    return hive
+
+
+# ── Farms ──────────────────────────────────────────────────────────────
+# A farm is one site (apiary) with its own yard. Hives belong to at most one farm.
+
+def _farms_path() -> Path:
+    return config.HIVES_DIR / "farms.json"
+
+
+def list_farms() -> list[dict]:
+    path = _farms_path()
+    return json.loads(path.read_text()) if path.exists() else []
+
+
+def get_farm(farm_id: str) -> dict | None:
+    return next((f for f in list_farms() if f["id"] == farm_id), None)
+
+
+def create_farm(name: str, location: str = "") -> dict:
+    farms = list_farms()
+    taken = {f["id"] for f in farms}
+    base = _slug(name) if _slug(name) != "hive" else "farm"
+    farm_id, n = base, 2
+    while farm_id in taken:
+        farm_id, n = f"{base}-{n}", n + 1
+    farm = {"id": farm_id, "name": name, "location": location, "created": datetime.now().isoformat(timespec="seconds")}
+    config.HIVES_DIR.mkdir(parents=True, exist_ok=True)
+    _farms_path().write_text(json.dumps([*farms, farm], indent=2))
+    return farm
+
+
+def ensure_farm(name: str, location: str = "") -> dict:
+    """The farm with this name, created if it does not exist yet."""
+    return next((f for f in list_farms() if f["name"] == name), None) or create_farm(name, location)
 
 
 def inspections(hive_id: str) -> list[dict]:

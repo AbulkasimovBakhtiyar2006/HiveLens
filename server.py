@@ -94,12 +94,22 @@ def get_samples(force: bool = False) -> dict:
 
 
 def build_apiary_overview() -> dict:
-    """Builds the multi-hive epidemiological map, trends, and drift risks across all hives."""
+    """Every hive with its latest numbers, laid out per farm, plus mite-drift links inside each farm."""
     hives = store.list_hives()
+    farms = store.list_farms()
+    farm_ids = {f["id"] for f in farms}
     nodes = []
-    cols = max(4, math.ceil(math.sqrt(max(1, len(hives)))))
 
-    for idx, h in enumerate(hives):
+    # Each farm gets its own yard grid; hives without a known farm share an "unassigned" yard.
+    groups: dict[str | None, list[dict]] = {}
+    for h in hives:
+        groups.setdefault(h.get("farm_id") if h.get("farm_id") in farm_ids else None, []).append(h)
+    placed = []
+    for farm_id, members in groups.items():
+        cols = max(2, math.ceil(math.sqrt(len(members))))  # a compact hex block per farm
+        placed += [(farm_id, i, cols, h) for i, h in enumerate(members)]
+
+    for farm_id, idx, cols, h in placed:
         insps = store.inspections(h["id"])
         latest = insps[-1] if insps else None
         prev = insps[-2] if len(insps) >= 2 else None
@@ -131,6 +141,7 @@ def build_apiary_overview() -> dict:
         nodes.append({
             "id": h["id"],
             "name": h["name"],
+            "farm_id": farm_id,
             "location": h.get("location", "Talgar Apiary"),
             "row": row,
             "col": col,
@@ -157,7 +168,7 @@ def build_apiary_overview() -> dict:
     sources = [n for n in nodes if n["overall"] == "act" or (n["mites_per_day"] or 0) >= config.THRESHOLDS.mites_per_day_high]
     for src in sources:
         for dst in nodes:
-            if src["id"] == dst["id"]:
+            if src["id"] == dst["id"] or src["farm_id"] != dst["farm_id"]:
                 continue
             dist = math.hypot(src["x_m"] - dst["x_m"], src["y_m"] - dst["y_m"])
             if dist <= 4.0:  # Adjacent hive foraging/drifting zone
@@ -181,7 +192,15 @@ def build_apiary_overview() -> dict:
         "worsening": sum(1 for n in nodes if n["trend"] == "worsening"),
         "at_drift_risk": sum(1 for n in nodes if n["drift_risk_from"] and n["overall"] != "act"),
     }
-    return {"summary": summary, "hives": nodes, "drift_links": drift_links}
+    farm_rows = []
+    for f in [*farms, {"id": None, "name": "Unassigned", "location": ""}]:
+        members = [n for n in nodes if n["farm_id"] == f["id"]]
+        if f["id"] is None and not members:
+            continue
+        counts = {k: sum(1 for n in members if n["overall"] == k) for k in ("good", "watch", "act", "unknown")}
+        worst = next((k for k in ("act", "watch", "good") if counts[k]), "unknown")
+        farm_rows.append({**f, "hive_count": len(members), "counts": counts, "overall": worst})
+    return {"summary": summary, "hives": nodes, "drift_links": drift_links, "farms": farm_rows}
 
 
 def seed_demo_apiary() -> dict:
@@ -234,15 +253,22 @@ def seed_demo_apiary() -> dict:
         ]),
     ]
 
-    existing_names = {h["name"] for h in store.list_hives()}
+    farm_for = {
+        "Talgar Mountain Sector A": store.ensure_farm("Talgar North", "Talgar Mountain, sector A"),
+        "Talgar Mountain Sector B": store.ensure_farm("Talgar South", "Talgar Mountain, sector B"),
+    }
+    existing = {h["name"]: h for h in store.list_hives()}
     created = 0
     today = date.today()
 
     for name, loc, weeks in scenarios:
         name = f"{name} (synthetic)"
-        if name in existing_names:
+        farm_id = farm_for[loc]["id"]
+        if name in existing:
+            if not existing[name].get("farm_id"):
+                store.set_hive_farm(existing[name]["id"], farm_id)
             continue
-        h = store.create_hive(name, f"{loc} · synthetic demo")
+        h = store.create_hive(name, "synthetic demo", farm_id)
         created += 1
         prev_metrics = None
         for w_idx, (mpd, honey_pct, brood_pct, larvae_pct, honey_kg, note) in enumerate(weeks):
@@ -539,6 +565,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 "class_colors": CLASS_COLORS,
                 "class_labels": CLASS_LABELS,
                 "hives": store.list_hives(),
+                "farms": store.list_farms(),
                 "apiary": build_apiary_overview(),
                 "samples": {
                     "boards": [{"name": b["name"], "experts": b["experts"]} for b in samples["boards"]],
@@ -702,13 +729,40 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             self._send_json({"error": f"Invalid JSON: {e}"}, 400)
             return
 
+        if path == "/api/farms":
+            name = str(body.get("name", "")).strip()
+            loc = str(body.get("location", "")).strip()
+            if not name or len(name) > 100 or len(loc) > 200:
+                self._send_json({"error": "Enter a farm name (up to 100 characters)."}, 400)
+                return
+            f = store.create_farm(name, loc)
+            self._send_json({"farm": f, "farms": store.list_farms(), "apiary": build_apiary_overview()})
+            return
+
         if path == "/api/hives":
             name = str(body.get("name", "")).strip()
             loc = str(body.get("location", "")).strip()
+            farm_id = body.get("farm_id") or None
             if not name:
                 self._send_json({"error": "Hive name is required"}, 400)
                 return
-            h = store.create_hive(name, loc)
+            if farm_id is not None and (not isinstance(farm_id, str) or store.get_farm(farm_id) is None):
+                self._send_json({"error": "Choose an existing farm."}, 400)
+                return
+            h = store.create_hive(name, loc, farm_id)
+            self._send_json({"hive": h, "hives": store.list_hives(), "apiary": build_apiary_overview()})
+            return
+
+        if path == "/api/hive_farm":
+            hive_id = str(body.get("hive_id", ""))
+            farm_id = body.get("farm_id") or None
+            if not _safe_part(hive_id) or not (config.HIVES_DIR / hive_id / "hive.json").exists():
+                self._send_json({"error": "Unknown hive."}, 404)
+                return
+            if farm_id is not None and (not isinstance(farm_id, str) or store.get_farm(farm_id) is None):
+                self._send_json({"error": "Choose an existing farm."}, 400)
+                return
+            h = store.set_hive_farm(hive_id, farm_id)
             self._send_json({"hive": h, "hives": store.list_hives(), "apiary": build_apiary_overview()})
             return
 

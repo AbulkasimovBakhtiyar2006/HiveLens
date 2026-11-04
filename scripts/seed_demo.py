@@ -56,7 +56,7 @@ def main() -> None:
         step = max(1, len(picked) // max(1, args.boards))
         picked = picked[::step][: args.boards]
 
-    hive = store.create_hive(args.name, "demo apiary")
+    hive = store.create_hive(args.name, "demo apiary", store.ensure_farm("Home apiary")["id"])
     n = max(len(picked), min(len(combs), args.boards))
     start = date.today() - timedelta(weeks=n - 1)
     for k in range(n):

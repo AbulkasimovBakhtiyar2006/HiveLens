@@ -5,20 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="HiveLens measures varroa mites, honey and brood from hive photos." />
   <title>Overview · HiveLens</title>
-  <script>
-    // Design variant: ?v=ledger|meadow|comb|graphite|atlas, remembered per browser.
-    (function () {
-      var all = { ledger: "side", meadow: "top", comb: "side", graphite: "side", atlas: "top" };
-      var v = new URLSearchParams(location.search).get("v");
-      try { if (!all[v]) v = localStorage.getItem("hivelens_variant"); } catch (e) {}
-      if (!all[v]) v = "ledger";
-      document.documentElement.dataset.variant = v;
-      document.documentElement.dataset.layout = all[v];
-    })();
-  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=Public+Sans:wght@400;500;600&family=Source+Sans+3:wght@400;600;700&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="/static/app.css" />
   <script src="/static/app.js" defer></script>
 </head>
@@ -33,7 +22,7 @@
           <span class="logo-slot" title="Icon placeholder: another AI will draw the logo">icon</span>
           <span class="brand-name">HiveLens</span>
         </a>
-        <span id="version" class="version-pill">v0.1</span>
+        <span id="version" hidden>v0.1</span>
       </div>
 
       <nav class="side-nav" aria-label="Main navigation">
@@ -44,18 +33,17 @@
         <a href="#method" data-nav="method">How it works</a>
       </nav>
 
-      <div class="sidebar-colonies">
-        <div class="sidebar-label-row">
-          <span class="sidebar-label">Hives</span>
-          <button type="button" class="link-btn" data-add-hive>Add hive</button>
+      <section class="farm-nav" aria-labelledby="farm-nav-title">
+        <div class="farm-nav-head">
+          <h2 id="farm-nav-title">Farms</h2>
+          <button type="button" class="link-btn" data-add-farm>Add farm</button>
         </div>
-        <div id="sidebar-hive-list" class="sidebar-hive-list" aria-label="Hives"></div>
-      </div>
+        <div id="farm-list" class="farm-list"></div>
+      </section>
 
-      <div class="sidebar-footer">
-        <span id="api-state" class="conn"><i></i>Connecting</span>
-        <span id="models" class="api-models">sam-3.1, muse-spark-1.3</span>
-      </div>
+      <!-- Filled by app.js; kept out of view on purpose. -->
+      <span id="api-state" hidden></span>
+      <span id="models" hidden></span>
     </aside>
 
     <div class="workspace">
@@ -80,11 +68,11 @@
         <section id="view-overview" class="view" aria-labelledby="overview-title">
           <div class="page-head">
             <div>
-              <h1 id="overview-title">Apiary overview</h1>
-              <p class="muted">Mite drop, honey and brood for every hive, from its latest inspection.</p>
+              <h1 id="overview-title">All farms</h1>
+              <p id="overview-sub" class="muted">Latest inspection of each hive.</p>
             </div>
             <div class="page-actions">
-              <button class="btn" type="button" id="hero-open-measured">Open Hive #7</button>
+              <button class="btn" type="button" id="hero-open-measured">Open measured hive</button>
               <button class="btn" type="button" id="seed-demo">Load demo apiary</button>
             </div>
           </div>
@@ -117,7 +105,7 @@
                 <thead>
                   <tr>
                     <th>Hive</th>
-                    <th>Location</th>
+                    <th>Farm</th>
                     <th>Source</th>
                     <th>Status</th>
                     <th class="num">Mites per day</th>
@@ -135,23 +123,7 @@
             <div id="hive-empty" class="empty" hidden></div>
           </div>
 
-          <section class="panel" id="apiary-map-card">
-            <header class="panel-head">
-              <div class="panel-title-group">
-                <h2>Yard map</h2>
-                <span class="sub-text">Mites drift between hives that stand close together. Lines join hives less than 4 m apart.</span>
-              </div>
-              <div class="map-legend">
-                <span><i class="dot good"></i>Under 3 a day</span>
-                <span><i class="dot watch"></i>3 to 10</span>
-                <span><i class="dot act"></i>10 or more</span>
-              </div>
-            </header>
-            <div class="map-workspace">
-              <div id="apiary-map-svg" class="apiary-map-canvas" role="region" aria-label="Yard map"></div>
-              <aside id="apiary-drift-panel" class="drift-sidebar"></aside>
-            </div>
-          </section>
+          <div id="farm-maps" class="farm-maps"></div>
         </section>
 
         <!-- New inspection -->
@@ -503,7 +475,8 @@
       </header>
       <div class="modal-body">
         <label>Name <input id="new-hive-name" maxlength="100" placeholder="Hive #09" required /></label>
-        <label>Location <span class="hint-inline">(optional)</span> <input id="new-hive-location" maxlength="200" placeholder="Orchard, north row" /></label>
+        <label>Farm <select id="new-hive-farm"></select></label>
+        <label>Place in the yard <span class="hint-inline">(optional)</span> <input id="new-hive-location" maxlength="200" placeholder="North row, second from the gate" /></label>
       </div>
       <footer class="modal-foot">
         <button type="button" class="btn" data-close="add-hive-dialog">Cancel</button>
@@ -512,43 +485,27 @@
     </form>
   </dialog>
 
+  <dialog id="add-farm-dialog" class="modal">
+    <form id="add-farm-form">
+      <header class="modal-head">
+        <h2>Add farm</h2>
+        <button class="icon-btn" type="button" data-close="add-farm-dialog" aria-label="Close">×</button>
+      </header>
+      <div class="modal-body">
+        <label>Name <input id="new-farm-name" maxlength="100" placeholder="Talgar East" required /></label>
+        <label>Location <span class="hint-inline">(optional)</span> <input id="new-farm-location" maxlength="200" placeholder="Village, region" /></label>
+      </div>
+      <footer class="modal-foot">
+        <button type="button" class="btn" data-close="add-farm-dialog">Cancel</button>
+        <button type="submit" class="btn primary" id="create-farm">Add farm</button>
+      </footer>
+    </form>
+  </dialog>
+
   <dialog id="image-dialog" class="lightbox">
     <button class="icon-btn" type="button" data-close="image-dialog" aria-label="Close image">×</button>
     <img id="full-image" alt="Full-size inspection image" />
   </dialog>
-
-  <div class="variant-bar" role="group" aria-label="Design variant">
-    <span>Design</span>
-    <button type="button" data-variant-pick="ledger">1 Ledger</button>
-    <button type="button" data-variant-pick="meadow">2 Meadow</button>
-    <button type="button" data-variant-pick="comb">3 Comb</button>
-    <button type="button" data-variant-pick="graphite">4 Graphite</button>
-    <button type="button" data-variant-pick="atlas">5 Atlas</button>
-  </div>
-  <script>
-    (function () {
-      var layouts = { ledger: "side", meadow: "top", comb: "side", graphite: "side", atlas: "top" };
-      var root = document.documentElement;
-      var buttons = document.querySelectorAll("[data-variant-pick]");
-      function mark() {
-        buttons.forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.variantPick === root.dataset.variant)); });
-      }
-      buttons.forEach(function (b) {
-        b.addEventListener("click", function () {
-          var v = b.dataset.variantPick;
-          root.dataset.variant = v;
-          root.dataset.layout = layouts[v];
-          try { localStorage.setItem("hivelens_variant", v); } catch (e) {}
-          var url = new URL(location.href);
-          url.searchParams.set("v", v);
-          history.replaceState(null, "", url);
-          mark();
-        });
-      });
-      try { localStorage.setItem("hivelens_variant", root.dataset.variant); } catch (e) {}
-      mark();
-    })();
-  </script>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <noscript><p class="alert">Turn on JavaScript to use HiveLens.</p></noscript>
