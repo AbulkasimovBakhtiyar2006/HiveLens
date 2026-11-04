@@ -91,6 +91,12 @@ def get_samples(force: bool = False) -> dict:
             if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
                 frames.append({"name": p.name, "path": str(p)})
 
+    # A fresh deployment can rerun the licensed bundled example without a large download.
+    example_dir = config.ROOT / "hivelens" / "examples" / "photo-analysis"
+    if not boards and (example_dir / "board.jpg").exists():
+        boards = [{"name": "IMG_5582.jpg", "path": str(example_dir / "board.jpg"), "experts": 21}]
+    if not frames and (example_dir / "frame_1.jpg").exists():
+        frames = [{"name": "Frame_from_hive_of_honey_bee_apis_mellifera.jpg", "path": str(example_dir / "frame_1.jpg")}]
     _SAMPLE_CACHE = {"boards": boards, "frames": frames}
     return _SAMPLE_CACHE
 
@@ -932,7 +938,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "image/jpeg")
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "public, max-age=3600")
+        self.send_header("Cache-Control", "no-store" if config.AUTH_PASSWORD else "public, max-age=3600")
         self.end_headers()
         self.wfile.write(data)
 

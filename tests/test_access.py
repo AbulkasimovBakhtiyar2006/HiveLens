@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 import pytest
 
 from hivelens import access, config, store
+from PIL import Image
 from tests.test_web import web  # noqa: F401
 
 
@@ -42,6 +43,8 @@ def test_cookie_login_reads_writes_and_logout(web):
     assert status == 200 and json.loads(raw)['auth_enabled']
     assert b'test-password' not in raw
     assert web('/api/hives', {'name': 'Allowed'}, auth)[0] == 200
+    store.save_inspection('allowed', {'id': 'r', 'date': '2026-11-05'}, {'board': Image.new('RGB', (2, 2))}, {})
+    assert web('/api/file/allowed/r/board.jpg', headers=auth)[1]['Cache-Control'] == 'no-store'
     assert web('/logout', {}, auth)[1]['Set-Cookie'].find('Max-Age=0') >= 0
 
 

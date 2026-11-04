@@ -35,3 +35,12 @@ def test_example_preserves_existing_workspace(tmp_path, monkeypatch):
     hive = store.create_hive("My hive")
     assert not install_if_empty()
     assert store.list_hives() == [hive]
+
+
+def test_fresh_volume_offers_attributed_samples_for_new_analysis(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, 'DATA_DIR', tmp_path)
+    monkeypatch.setattr(server, '_SAMPLE_CACHE', None)
+    samples = server.get_samples()
+    assert samples['boards'][0]['name'] == 'IMG_5582.jpg'
+    assert samples['boards'][0]['experts'] == 21
+    assert samples['frames'][0]['path'].endswith('frame_1.jpg')

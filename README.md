@@ -2,6 +2,10 @@
 
 **A hive inspection agent that measures before it speaks.**
 
+[Open the live demo](https://hivelens-production.up.railway.app/) · Password-protected
+shared judging workspace. Use the access details provided with the submission, or
+follow the keyless local setup below.
+
 HiveLens turns sticky-board and comb photographs into an inspection you can audit:
 counts, visible comb composition, marked-up images, checked claims and a saved report.
 **SAM 3.1** supplies segmentation; **Muse Spark** interprets image tiles and reasons over
