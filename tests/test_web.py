@@ -26,7 +26,7 @@ def web(tmp_path, monkeypatch):
         conn = http.client.HTTPConnection('127.0.0.1', httpd.server_port, timeout=5)
         try:
             conn.request('GET' if body is None else 'POST', path,
-                         None if body is None else json.dumps(body),
+                         None if body is None else body if isinstance(body, bytes) else json.dumps(body),
                          headers or {'Content-Type': 'application/json'})
             response = conn.getresponse()
             return response.status, dict(response.getheaders()), response.read()
@@ -48,6 +48,17 @@ def test_local_assets_and_allowlist(web):
     assert b'cdn.tailwindcss.com' not in web('/')[2]
     assert web('/static/../server.py')[0] == 404
     assert web('/static/.env')[0] == 404
+
+
+def test_hosted_health_and_bundled_assets_with_empty_volume(web):
+    # The fixture points DATA_DIR at a fresh volume. Bundled references stay in the image.
+    status, _, raw = web('/healthz')
+    assert status == 200 and json.loads(raw)['status'] == 'ok'
+    state = json.loads(web('/api/state')[2])
+    assert state['benchmark']
+    assert state['demo_assets']['images']
+    name = state['demo_assets']['images'][0]
+    assert web('/api/demo_asset/' + name + '?max_side=120')[0] == 200
 
 
 def test_create_hive_and_read_empty_history(web):

@@ -318,6 +318,7 @@ async function renderWelcome() {
 async function loadState() {
   try {
     state = await api("/api/state");
+    $("signout").hidden = !state.auth_enabled;
     applyWorkspaceMode();
     $("load-error").hidden = true;
     const measuredHives = state.apiary?.hives?.filter((h) => !isSynthetic(h)) || [];

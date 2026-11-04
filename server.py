@@ -29,13 +29,13 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from hivelens import __version__, commons, config, engine, place, settings, store, usage
+from hivelens import __version__, access, commons, config, engine, place, settings, store, usage
 from hivelens.viz import CLASS_COLORS, CLASS_LABELS
 
 Image.MAX_IMAGE_PIXELS = None  # sticky-board photos are ~49 MP
 
-PORT = int(config.os.getenv("HIVELENS_PORT", "8502"))
-HOST = "127.0.0.1"
+PORT = int(config.os.getenv("PORT", config.os.getenv("HIVELENS_PORT", "8502")))
+HOST = config.os.getenv("HIVELENS_HOST", "127.0.0.1")
 UI_PATH = Path(__file__).resolve().parent / "hivelens" / "ui.html"
 STATIC_DIR = UI_PATH.parent / "static"
 MAX_REQUEST_BYTES = 85 * 1024 * 1024  # 60 MB of photos after base64 encoding
@@ -662,9 +662,15 @@ class HiveLensHandler(BaseHTTPRequestHandler):
 
     @_workspace_request
     def do_GET(self) -> None:
+        if not access.authorize(self):
+            return
         parsed = urllib.parse.urlsplit(self.path)
         path = parsed.path
         query = dict(urllib.parse.parse_qsl(parsed.query))
+
+        if path == "/healthz":
+            self._send_json({"status": "ok", "version": __version__})
+            return
 
         if path in ("/", "/index.html"):
             html = UI_PATH.read_bytes()
@@ -761,8 +767,12 @@ class HiveLensHandler(BaseHTTPRequestHandler):
 
         if path == "/api/state":
             eval_path = config.DATA_DIR / "eval" / "varroa_eval.json"
+            if not eval_path.exists():
+                eval_path = config.ROOT / "data" / "eval" / "varroa_eval.json"
             bench = json.loads(eval_path.read_text()) if eval_path.exists() else None
             demo_dir = config.DATA_DIR / "demo_assets"
+            if not demo_dir.exists():
+                demo_dir = config.ROOT / "data" / "demo_assets"
             demo_numbers = json.loads((demo_dir / "numbers.json").read_text()) if (demo_dir / "numbers.json").exists() else None
             demo_images = sorted(p.name for p in demo_dir.glob("*.jpg")) if demo_dir.exists() else []
             samples = get_samples() if workspace.current() == "demo" else {"boards": [], "frames": []}
@@ -770,6 +780,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 "version": __version__,
                 "workspace": workspace.current(),
                 "has_api_key": config.has_api_key(),
+                "auth_enabled": bool(config.AUTH_PASSWORD),
                 "maps": {
                     "browser_key": config.GOOGLE_MAPS_BROWSER_KEY,
                     "map_id": config.GOOGLE_MAPS_MAP_ID,
@@ -816,6 +827,8 @@ class HiveLensHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/demo_asset/"):
             name = urllib.parse.unquote(path.removeprefix("/api/demo_asset/"))
             demo_dir = config.DATA_DIR / "demo_assets"
+            if not demo_dir.exists():
+                demo_dir = config.ROOT / "data" / "demo_assets"
             fpath = demo_dir / name
             if not _safe_part(name) or not _inside(fpath, demo_dir) or fpath.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
                 self._send_json({"error": "not allowed"}, 403)
@@ -972,6 +985,8 @@ class HiveLensHandler(BaseHTTPRequestHandler):
 
     @_workspace_request
     def do_POST(self) -> None:
+        if not access.authorize(self, post=True):
+            return
         parsed = urllib.parse.urlsplit(self.path)
         path = parsed.path
         try:
@@ -1158,15 +1173,21 @@ class HiveLensHandler(BaseHTTPRequestHandler):
 def main() -> None:
     from hivelens.example import install_if_empty
 
+    if config.REQUIRE_AUTH and len(config.AUTH_PASSWORD) < 16:
+        raise SystemExit("Set HIVELENS_AUTH_PASSWORD to at least 16 characters before public deployment.")
     url = f"http://{HOST}:{PORT}"
     server = ThreadingHTTPServer((HOST, PORT), HiveLensHandler)
     if install_if_empty():
         print("Installed the attributed photo example in Demo (no model calls).")
+    if config.os.getenv("HIVELENS_IMPORT_STUDY", "0") == "1":
+        from hivelens.field_data import import_apiary
+        import_apiary("5", "production")
     print(f"\n🐝 HiveLens {__version__} is live at:  {url}")
     print(f"   Segmentation : {config.SEGMENT_MODEL}")
     print(f"   Reasoning    : {config.REASONING_MODEL}")
     print("   Press Ctrl+C to stop.\n")
-    threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+    if config.os.getenv("HIVELENS_OPEN_BROWSER", "1") == "1":
+        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -60,6 +60,8 @@ The alternative notebook interface is `streamlit run app.py`.
 
 ### Demo and production workspaces
 
+For a shared, password-protected online demo, see [Railway deployment](docs/RAILWAY.md).
+
 Use the **Demo / Production** selector above the page, or open a direct link:
 
 | Workspace | Link | Data |

@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 data/*
 !data/demo_assets/
 !data/demo_assets/**
