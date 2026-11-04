@@ -62,6 +62,34 @@ def set_hive_farm(hive_id: str, farm_id: str | None) -> dict:
     return hive
 
 
+HIVE_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+YARD_LIMIT_M = 500.0
+
+
+def update_hive(hive_id: str, **fields) -> dict:
+    """Sets yard position (x_m, y_m, in metres) and paint colour ("#rrggbb"). None clears a field."""
+    path = _hive_dir(hive_id) / "hive.json"
+    hive = json.loads(path.read_text())
+    for key, value in fields.items():
+        if key in ("x_m", "y_m"):
+            if value is not None:
+                value = float(value)
+                if not -YARD_LIMIT_M <= value <= YARD_LIMIT_M:
+                    raise ValueError("A hive must stay within 500 m of the yard origin.")
+                value = round(value, 2)
+        elif key == "color":
+            if value is not None and not HIVE_COLOR.match(str(value)):
+                raise ValueError("Colour must look like #e9c46a.")
+        else:
+            raise ValueError(f"Unknown hive field: {key}")
+        if value is None:
+            hive.pop(key, None)
+        else:
+            hive[key] = value
+    path.write_text(json.dumps(hive, indent=2))
+    return hive
+
+
 # ── Farms ──────────────────────────────────────────────────────────────
 # A farm is one site (apiary) with its own yard. Hives belong to at most one farm.
 

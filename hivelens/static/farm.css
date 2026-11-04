@@ -209,19 +209,16 @@
   width: 100%;
   background: var(--rain);
 }
-.hour-flight,
-.flight-tag::before {
+.hour-flight {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--border-strong);
 }
-.hour-flight.good,
-.flight-tag.good::before {
+.hour-flight.good {
   background: var(--good);
 }
-.hour-flight.limited,
-.flight-tag.limited::before {
+.hour-flight.limited {
   background: var(--watch);
 }
 
@@ -285,7 +282,7 @@
 .wcard:hover {
   background: var(--row-hover);
 }
-.wcard.empty {
+.wcard.no-location {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
@@ -293,7 +290,7 @@
   border-style: dashed;
   cursor: default;
 }
-.wcard.empty p {
+.wcard.no-location p {
   font-size: 0.86rem;
   color: var(--text-2);
 }
@@ -321,9 +318,14 @@
   font-size: 0.8rem;
   font-weight: 600;
 }
-.flight-tag::before {
-  content: "";
-  display: inline-block;
+.flight-tag.good {
+  color: var(--good);
+}
+.flight-tag.limited {
+  color: var(--watch);
+}
+.flight-tag.none {
+  color: var(--text-2);
 }
 
 /* ── Weather icons (Meteocons, MIT) ─────────────────────────────────── */
@@ -404,4 +406,120 @@
   .cond-days {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* ── Yard map editor ────────────────────────────────────────────────── */
+.map-legend-row {
+  padding: 10px var(--pad) 0;
+}
+.farm-map.editing .apiary-map-canvas {
+  background: var(--accent-soft);
+}
+.map-node.draggable {
+  cursor: grab;
+  touch-action: none;
+}
+.map-node.dragging {
+  cursor: grabbing;
+  opacity: 0.85;
+}
+.map-node.dragging .map-tile {
+  stroke-width: 3;
+}
+.map-measure line {
+  stroke: var(--text-2);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.map-measure text {
+  fill: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  stroke: var(--accent-soft);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+.map-measure.risky line {
+  stroke: var(--act);
+  stroke-dasharray: none;
+  stroke-width: 1.5;
+}
+.map-measure.risky text {
+  fill: var(--act);
+}
+.key-line.measure {
+  border-top: 1px dashed var(--text-2);
+}
+.arrange {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px var(--pad) 0;
+}
+.arrange strong {
+  align-self: center;
+  font-size: 0.93rem;
+}
+.arrange label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.arrange input {
+  width: 110px;
+  height: 32px;
+}
+.arrange select {
+  height: 32px;
+}
+
+.paint {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.paint-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.86rem;
+}
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.swatch {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  background: var(--swatch, var(--surface));
+  cursor: pointer;
+}
+.swatch[aria-pressed="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.swatch.custom {
+  overflow: hidden;
+  background: conic-gradient(#e9c46a, #9cc49a, #6f9fd8, #b39ddb, #e8a15c, #e9c46a);
+}
+.swatch.custom input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
 }

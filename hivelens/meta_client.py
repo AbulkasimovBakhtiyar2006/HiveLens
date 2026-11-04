@@ -13,7 +13,7 @@ from functools import lru_cache
 
 from PIL import Image
 
-from . import config
+from . import config, usage
 
 
 class MissingAPIKey(RuntimeError):
@@ -29,7 +29,58 @@ def client():
         )
     from openai import OpenAI
 
-    return OpenAI(base_url=config.API_BASE, api_key=config.API_KEY, timeout=180, max_retries=3)
+    c = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY, timeout=180, max_retries=3)
+    _meter(c)
+    return c
+
+
+def _kind(model: str) -> str:
+    return "segmentation" if model == config.SEGMENT_MODEL or "sam" in model.lower() else "reasoning"
+
+
+class _MeteredStream:
+    """Passes a streamed response through unchanged and records its usage when it completes."""
+
+    def __init__(self, stream, model: str):
+        self._stream = stream
+        self._model = model
+
+    def __iter__(self):
+        usage_obj, done = None, False
+        try:
+            for event in self._stream:
+                if getattr(event, "type", "") == "response.completed":
+                    usage_obj = getattr(getattr(event, "response", None), "usage", None)
+                    done = True
+                yield event
+        finally:
+            usage.record(self._model, _kind(self._model), usage_obj, ok=done)
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def _meter(c) -> None:
+    """Every Meta Model API call goes through this client, so recording here covers SAM 3.1 and Muse Spark."""
+    chat_create = c.chat.completions.create
+    responses_create = c.responses.create
+
+    def metered_chat(*args, **kwargs):
+        model = kwargs.get("model", config.REASONING_MODEL)
+        resp = chat_create(*args, **kwargs)
+        usage.record(model, _kind(model), getattr(resp, "usage", None))
+        return resp
+
+    def metered_responses(*args, **kwargs):
+        model = kwargs.get("model", config.SEGMENT_MODEL)
+        resp = responses_create(*args, **kwargs)
+        if kwargs.get("stream"):
+            return _MeteredStream(resp, model)
+        usage.record(model, _kind(model), getattr(resp, "usage", None))
+        return resp
+
+    c.chat.completions.create = metered_chat
+    c.responses.create = metered_responses
 
 
 def resize_max_side(image: Image.Image, max_side: int | None) -> Image.Image:

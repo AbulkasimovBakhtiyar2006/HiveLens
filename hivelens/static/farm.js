@@ -297,7 +297,7 @@ function farmConditionsPanel(farm) {
 
 function farmWeatherCard(farm) {
   if (farm.lat == null) {
-    return `<div class="wcard empty">
+    return `<div class="wcard no-location">
       <strong>${esc(farm.name)}</strong>
       <p>No location yet.</p>
       <button type="button" class="link-btn" data-edit-farm="${esc(farm.id)}">Add location</button>

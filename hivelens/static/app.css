@@ -644,16 +644,6 @@ input[type="checkbox"] {
   font-weight: 600;
   white-space: nowrap;
 }
-.badge::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.badge.plain::before {
-  display: none;
-}
 .badge.good {
   background: var(--good-soft);
   color: var(--good);
@@ -1211,12 +1201,21 @@ kbd {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
-.form-grid > label {
+/* Label text and its hint share one line; the control takes the full row below.
+   Fields in the same grid row are bottom-aligned, so inputs line up even when one label has a hint. */
+.form-grid > label,
+.modal-body label {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-flow: row wrap;
+  align-content: flex-end;
+  align-items: baseline;
+  gap: 6px 5px;
   font-size: 0.86rem;
   font-weight: 500;
+}
+.form-grid > label > :is(input, select, textarea),
+.modal-body label > :is(input, select, textarea) {
+  flex: 1 1 100%;
 }
 .span-2 {
   grid-column: span 2;
@@ -1389,7 +1388,7 @@ kbd {
 }
 
 .form-grid > .switch {
-  flex-direction: row;
+  flex-wrap: nowrap;
   align-items: flex-start;
   gap: 12px;
   font-weight: 400;
@@ -2249,13 +2248,6 @@ dialog::backdrop {
   flex-direction: column;
   gap: 14px;
   padding: 18px;
-}
-.modal-body label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 0.86rem;
-  font-weight: 500;
 }
 .modal-foot {
   display: flex;

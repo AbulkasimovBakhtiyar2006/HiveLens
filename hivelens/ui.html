@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="/static/app.css" />
   <link rel="stylesheet" href="/static/farm.css" />
+  <link rel="stylesheet" href="/static/account.css" />
   <script>
     // Apply the saved sidebar width before first paint.
     try {
@@ -19,7 +20,9 @@
     } catch (e) {}
   </script>
   <script src="/static/app.js" defer></script>
+  <script src="/static/yard.js" defer></script>
   <script src="/static/farm.js" defer></script>
+  <script src="/static/account.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -40,6 +43,7 @@
         <a href="#history" data-nav="history">Hive records</a>
         <a href="#benchmark" data-nav="benchmark">Benchmark</a>
         <a href="#method" data-nav="method">How it works</a>
+        <a href="#usage" data-nav="usage">Usage and cost</a>
       </nav>
 
       <section class="farm-nav" aria-labelledby="farm-nav-title">
@@ -49,6 +53,11 @@
         </div>
         <div id="farm-list" class="farm-list"></div>
       </section>
+
+      <a href="#settings" data-nav="settings" class="profile-chip" aria-label="Profile and settings">
+        <span id="profile-avatar" class="avatar" aria-hidden="true"></span>
+        <span class="profile-text"><strong id="profile-name">Your profile</strong><small id="profile-sub">Profile and settings</small></span>
+      </a>
 
       <!-- Filled by app.js; kept out of view on purpose. -->
       <span id="api-state" hidden></span>
@@ -459,6 +468,107 @@
               </div>
             </section>
           </div>
+        </section>
+
+        <!-- Usage and cost -->
+        <section id="view-usage" class="view" hidden aria-labelledby="usage-title">
+          <div class="page-head">
+            <div>
+              <h1 id="usage-title">Usage and cost</h1>
+              <p class="muted">What the SAM 3.1 and Muse Spark calls cost, priced with the rates in Settings. Answers served from the cache are free and not counted.</p>
+            </div>
+            <div class="page-actions">
+              <a class="btn" href="#settings">Edit prices</a>
+            </div>
+          </div>
+          <div id="usage-body" class="usage-body"><p class="muted">Loading usage…</p></div>
+        </section>
+
+        <!-- Settings and profile -->
+        <section id="view-settings" class="view" hidden aria-labelledby="settings-title">
+          <div class="page-head">
+            <div>
+              <h1 id="settings-title">Settings</h1>
+              <p class="muted">Your profile, the prices used for cost estimates, and the model connection.</p>
+            </div>
+          </div>
+
+          <form id="settings-form" class="settings-layout" novalidate>
+            <section class="panel">
+              <header class="panel-head"><h2>Profile</h2></header>
+              <div class="panel-body form-grid">
+                <div class="photo-row span-full">
+                  <span id="settings-avatar" class="avatar lg" aria-hidden="true"></span>
+                  <div class="photo-text">
+                    <strong>Profile photo</strong>
+                    <p class="hint">JPEG, PNG or WebP, cropped to a square. Without a photo the sidebar shows a yellow circle.</p>
+                    <div class="photo-actions">
+                      <label class="btn sm">Upload photo<input id="photo-file" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" /></label>
+                      <button id="photo-remove" type="button" class="btn sm" hidden>Remove photo</button>
+                    </div>
+                  </div>
+                </div>
+                <label class="span-2">Name <input id="set-name" maxlength="100" autocomplete="name" placeholder="Your name" /></label>
+                <label class="span-2">Email <span class="hint-inline">(optional)</span> <input id="set-email" type="email" maxlength="200" autocomplete="email" placeholder="you@example.com" /></label>
+                <label class="span-2">Organisation <span class="hint-inline">(optional)</span> <input id="set-org" maxlength="120" autocomplete="organization" placeholder="Apiary or company" /></label>
+                <label class="span-2">Role
+                  <select id="set-role">
+                    <option value="beekeeper">Beekeeper</option>
+                    <option value="owner">Apiary owner</option>
+                    <option value="inspector">Bee inspector</option>
+                    <option value="researcher">Researcher</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section class="panel">
+              <header class="panel-head">
+                <div class="panel-title-group">
+                  <h2>Model prices</h2>
+                  <span class="sub-text">US dollars. Changing a price re-prices all recorded usage.</span>
+                </div>
+              </header>
+              <div class="panel-body price-grid">
+                <fieldset>
+                  <legend>Muse Spark <span class="hint-inline">per million tokens</span></legend>
+                  <label>Input <input id="price-muse-in" type="number" min="0" step="0.01" inputmode="decimal" /></label>
+                  <label>Cached input <input id="price-muse-cached" type="number" min="0" step="0.01" inputmode="decimal" /></label>
+                  <label>Output, including reasoning <input id="price-muse-out" type="number" min="0" step="0.01" inputmode="decimal" /></label>
+                  <p class="hint">Default $1.25 in, $0.15 cached, $4.25 out: the rates reported for Meta's paid Muse Spark API. Check your Meta developer console.</p>
+                </fieldset>
+                <fieldset>
+                  <legend>SAM 3.1</legend>
+                  <label>Per request <input id="price-sam-req" type="number" min="0" step="0.001" inputmode="decimal" /></label>
+                  <label>Input, per million tokens <input id="price-sam-in" type="number" min="0" step="0.01" inputmode="decimal" /></label>
+                  <label>Output, per million tokens <input id="price-sam-out" type="number" min="0" step="0.01" inputmode="decimal" /></label>
+                  <p class="hint">Meta has not published a SAM 3.1 API price. $0.005 per request is a placeholder taken from a public SAM 3 image host. Replace it with your rate.</p>
+                </fieldset>
+              </div>
+            </section>
+
+            <section class="panel">
+              <header class="panel-head"><h2>Planning</h2></header>
+              <div class="panel-body form-grid">
+                <label class="span-2">Inspections per hive per month
+                  <input id="plan-per-month" type="number" min="0" max="60" step="1" />
+                </label>
+                <label class="span-2">Monthly budget, USD <span class="hint-inline">(0 = none)</span>
+                  <input id="plan-budget" type="number" min="0" step="1" inputmode="decimal" />
+                </label>
+              </div>
+            </section>
+
+            <section class="panel">
+              <header class="panel-head"><h2>Connection</h2></header>
+              <div class="panel-body"><dl id="api-info" class="info-list"></dl></div>
+            </section>
+
+            <div class="settings-actions">
+              <button id="save-settings" class="btn primary" type="submit">Save settings</button>
+              <span id="settings-hint" class="hint"></span>
+            </div>
+          </form>
         </section>
 
         <footer class="footer">

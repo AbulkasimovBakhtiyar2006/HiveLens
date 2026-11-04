@@ -41,6 +41,8 @@ const VIEWS = {
   history: "Hive records",
   benchmark: "Benchmark",
   method: "How it works",
+  usage: "Usage and cost",
+  settings: "Settings",
 };
 const STATUS = { good: "Normal", watch: "Watch", act: "Critical", unknown: "No data" };
 const statusOf = (s) => (Object.hasOwn(STATUS, s) ? s : "unknown");
@@ -201,6 +203,9 @@ function route() {
 
 function renderView() {
   if (!state) return;
+  if (typeof renderProfileChip === "function") renderProfileChip(); // account.js
+  if (view === "usage" && typeof renderUsage === "function") renderUsage();
+  if (view === "settings" && typeof renderSettings === "function") renderSettings();
   if (view === "overview") renderOverview();
   if (view === "inspect") updateSummary();
   if (view === "history") loadHistory();
@@ -336,183 +341,7 @@ function fillFarmSelect(select, current) {
   select.value = real.some((f) => f.id === current) ? current : real[0]?.id || "";
 }
 
-/* ── Yard maps, one per farm ─────────────────────────────────────────── */
-const mapSelection = {};
-
-function yardSvg(key, members, links) {
-  const byId = Object.fromEntries(members.map((h) => [h.id, h]));
-  const xs = members.map((h) => h.x_m || 0);
-  const ys = members.map((h) => h.y_m || 0);
-  const minX = Math.floor(Math.min(...xs));
-  const maxX = Math.max(Math.ceil(Math.max(...xs)), minX + 4);
-  const minY = Math.floor(Math.min(...ys));
-  const maxY = Math.max(Math.ceil(Math.max(...ys)), minY + 1);
-  const spanX = maxX - minX;
-  const spanY = maxY - minY;
-
-  // One scale for both axes, so distances on screen match the yard.
-  const W = 720;
-  const pad = { l: 84, r: 48, t: 44, b: 64 };
-  const scale = Math.min((W - pad.l - pad.r) / spanX, 90, (440 - pad.t - pad.b) / spanY);
-  const H = Math.round(spanY * scale + pad.t + pad.b);
-  const offX = pad.l + (W - pad.l - pad.r - spanX * scale) / 2;
-  const sx = (x) => offX + (x - minX) * scale;
-  const sy = (y) => pad.t + (y - minY) * scale;
-  const tw = 64;
-  const th = 46;
-
-  const tone = {
-    good: ["var(--good)", "var(--good-soft)"],
-    watch: ["var(--watch)", "var(--watch-soft)"],
-    act: ["var(--act)", "var(--act-soft)"],
-    unknown: ["var(--border-strong)", "var(--surface-2)"],
-  };
-
-  let grid = "";
-  for (let gx = minX; gx <= maxX; gx += 1) {
-    const px = sx(gx).toFixed(1);
-    grid += `<line class="map-grid" x1="${px}" y1="${pad.t - 26}" x2="${px}" y2="${H - pad.b + 30}"/>`;
-    grid += `<text class="map-axis" x="${px}" y="${H - 12}" text-anchor="middle">${gx} m</text>`;
-  }
-  for (let gy = minY; gy <= maxY; gy += 1) {
-    const py = sy(gy).toFixed(1);
-    grid += `<line class="map-grid" x1="${(offX - tw / 2 - 8).toFixed(1)}" y1="${py}" x2="${(offX + spanX * scale + 34).toFixed(1)}" y2="${py}"/>`;
-    grid += `<text class="map-axis" x="${(offX - tw / 2 - 14).toFixed(1)}" y="${(sy(gy) + 3.5).toFixed(1)}" text-anchor="end">${gy} m</text>`;
-  }
-
-  const edges = links
-    .map((l) => {
-      const a = byId[l.from_id];
-      const b = byId[l.to_id];
-      if (!a || !b) return "";
-      const x1 = sx(a.x_m);
-      const y1 = sy(a.y_m);
-      const x2 = sx(b.x_m);
-      const y2 = sy(b.y_m);
-      const len = Math.hypot(x2 - x1, y2 - y1) || 1;
-      const ux = (x2 - x1) / len;
-      const uy = (y2 - y1) / len;
-      // Stop the line at the tile edge (tiles are rectangles, so the gap depends on direction).
-      const gap = Math.min(Math.abs(ux) > 1e-6 ? tw / 2 / Math.abs(ux) : Infinity, Math.abs(uy) > 1e-6 ? th / 2 / Math.abs(uy) : Infinity) + 6;
-      return `<line class="map-link ${l.risk === "high" ? "high" : ""}" x1="${(x1 + ux * gap).toFixed(1)}" y1="${(y1 + uy * gap).toFixed(1)}" x2="${(x2 - ux * gap).toFixed(1)}" y2="${(y2 - uy * gap).toFixed(1)}"><title>${esc(shortName(a))} to ${esc(shortName(b))}: ${esc(l.distance_m)} m, ${esc(l.risk)} exposure</title></line>`;
-    })
-    .join("");
-
-  const nodes = members
-    .map((h) => {
-      const cx = sx(h.x_m);
-      const cy = sy(h.y_m);
-      const s = statusOf(h.overall);
-      const [stroke, fill] = tone[s];
-      const measured = !isSynthetic(h);
-      const selected = mapSelection[key] === h.id;
-      const x = (cx - tw / 2).toFixed(1);
-      const y = (cy - th / 2).toFixed(1);
-      const value = h.mites_per_day != null ? num(h.mites_per_day) : "–";
-      const label = `${displayName(h)}, ${STATUS[s]}, ${h.mites_per_day != null ? `${num(h.mites_per_day)} mites per day` : "no inspection"}${measured ? ", measured" : ""}`;
-      return `<g class="map-node${measured ? " measured" : ""}${selected ? " selected" : ""}" data-map-hive="${esc(h.id)}" data-map-farm="${esc(key)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${esc(label)}">
-        <title>${esc(label)}</title>
-        ${measured || selected ? `<rect class="map-ring" x="${(cx - tw / 2 - 5).toFixed(1)}" y="${(cy - th / 2 - 5).toFixed(1)}" width="${tw + 10}" height="${th + 10}" rx="13"/>` : ""}
-        <rect class="map-tile" x="${x}" y="${y}" width="${tw}" height="${th}" rx="9" fill="${fill}" stroke="${stroke}"/>
-        <text class="map-value" x="${cx.toFixed(1)}" y="${(cy + 1).toFixed(1)}" text-anchor="middle">${esc(value)}</text>
-        <text class="map-unit" x="${cx.toFixed(1)}" y="${(cy + 14).toFixed(1)}" text-anchor="middle">mites/day</text>
-        <text class="map-label" x="${cx.toFixed(1)}" y="${(cy + th / 2 + 17).toFixed(1)}" text-anchor="middle">${esc(shortName(h))}</text>
-      </g>`;
-    })
-    .join("");
-
-  return `<svg viewBox="0 0 ${W} ${H}" role="group" aria-label="Yard map, hive positions in metres">${grid}${edges}${nodes}</svg>`;
-}
-
-function hiveDetail(h) {
-  if (!h) return '<p class="map-hint">Select a hive on the map to see its latest numbers.</p>';
-  const s = statusOf(h.overall);
-  const stat = (label, v, unit) => `<div><dt>${label}</dt><dd>${v != null ? `${num(v)}${unit ? `<small>${unit}</small>` : ""}` : "–"}</dd></div>`;
-  return `<div class="map-detail">
-    <div class="map-detail-head">
-      <strong>${esc(displayName(h))}</strong>${badge(s)}
-    </div>
-    <p class="map-detail-meta">${isSynthetic(h) ? "Demo data" : "Measured"}${h.latest_date ? `, last inspected ${esc(dateLabel(h.latest_date))}` : ", not inspected yet"}</p>
-    <dl class="map-stats">
-      ${stat("Mites per day", h.mites_per_day, "")}
-      ${stat("Honey", h.honey_kg_hive_est, "kg")}
-      ${stat("Brood", h.brood_total_pct, "%")}
-      ${stat("Stores", h.stores_weeks, "wk")}
-    </dl>
-    ${h.flags?.length ? `<p class="map-flag ${s}">${esc(h.flags[0])}</p>` : ""}
-    <div class="map-detail-actions">
-      <button type="button" class="btn sm primary" data-hive="${esc(h.id)}" data-destination="history">Open records</button>
-      <button type="button" class="btn sm" data-hive="${esc(h.id)}" data-destination="inspect">New inspection</button>
-    </div>
-  </div>`;
-}
-
-function farmMapPanel(key, members, links, showFarmName) {
-  const farm = farmByKey(key);
-  const title = showFarmName ? `${farm?.name || "Unassigned"}` : "Yard map";
-  const sub = showFarmName
-    ? `${farm?.location ? `${farm.location}. ` : ""}${members.length} hive${members.length === 1 ? "" : "s"}, drawn to scale.`
-    : "Hive positions to scale. Lines link critical hives to neighbours within 4 m.";
-  const head = `<header class="panel-head">
-      <div class="panel-title-group"><h2>${esc(title)}</h2><span class="sub-text">${esc(sub)}</span></div>
-      <div class="map-legend">
-        <span><i class="dot good"></i>Below 3</span><span><i class="dot watch"></i>3–10</span><span><i class="dot act"></i>10+</span>
-        <span><i class="key-line high"></i>High exposure</span><span><i class="key-line"></i>Moderate</span><span><i class="key-ring"></i>Measured</span>
-      </div>
-    </header>`;
-  if (!members.length) {
-    return `<section class="panel farm-map">${head}${emptyState(
-      "No hives on this farm yet",
-      "Add a hive to place it on the yard map.",
-      '<button class="btn primary sm" type="button" data-add-hive>Add hive</button>',
-    )}</section>`;
-  }
-  if (mapSelection[key] && !members.some((h) => h.id === mapSelection[key])) delete mapSelection[key];
-  const byId = Object.fromEntries(members.map((h) => [h.id, h]));
-  const sorted = [...links].sort((a, b) => Number(b.risk === "high") - Number(a.risk === "high") || a.distance_m - b.distance_m);
-  const pairs = sorted.length
-    ? sorted
-        .map(
-          (l) => `<button type="button" class="drift-item ${l.risk === "high" ? "high" : ""}" data-map-hive="${esc(l.to_id)}" data-map-farm="${esc(key)}">
-            <span class="drift-item-top"><span>${esc(shortName(byId[l.from_id] || { name: l.from_name }))} → ${esc(shortName(byId[l.to_id] || { name: l.to_name }))}</span><span class="drift-dist">${esc(l.distance_m)} m</span></span>
-            <small>${l.risk === "high" ? "High" : "Moderate"} exposure, source ${num(byId[l.from_id]?.mites_per_day)} mites/day</small>
-          </button>`,
-        )
-        .join("")
-    : '<p class="hint">No hive is within 4 m of a critical hive.</p>';
-  return `<section class="panel farm-map" data-farm-map="${esc(key)}">
-    ${head}
-    <div class="map-workspace">
-      <div class="apiary-map-canvas">${yardSvg(key, members, links)}</div>
-      <aside class="drift-sidebar">
-        ${hiveDetail(byId[mapSelection[key]])}
-        <h4>Exposed pairs <span class="count">${sorted.length}</span></h4>
-        <div class="drift-list">${pairs}</div>
-      </aside>
-    </div>
-  </section>`;
-}
-
-function renderFarmMaps() {
-  const wrap = $("farm-maps");
-  if (!wrap) return;
-  const links = state?.apiary?.drift_links || [];
-  const keys = selectedFarm === "all" ? farms().filter((f) => f.hive_count).map((f) => farmKey(f.id)) : [selectedFarm];
-  wrap.innerHTML = keys
-    .map((key) => {
-      const members = hivesOfFarm(key);
-      const ids = new Set(members.map((h) => h.id));
-      return farmMapPanel(key, members, links.filter((l) => ids.has(l.from_id) && ids.has(l.to_id)), selectedFarm === "all");
-    })
-    .join("");
-}
-
-function pickMapHive(key, id) {
-  mapSelection[key] = mapSelection[key] === id ? undefined : id;
-  renderFarmMaps();
-  const node = document.querySelector(`[data-farm-map="${CSS.escape(key)}"] .map-node[data-map-hive="${CSS.escape(id)}"]`);
-  node?.focus({ preventScroll: true });
-}
+// The yard maps (view and layout editor) live in yard.js.
 
 // Top bar actions follow the page: adding belongs to the overview (a farm or all farms),
 // and pages that already have their own "New inspection" button don't get a second one.
@@ -520,7 +349,7 @@ function updateTopbarActions() {
   const overview = view === "overview";
   $("top-add-farm").hidden = !(overview && selectedFarm === "all");
   $("top-add-hive").hidden = !(overview && selectedFarm !== "all");
-  $("top-new-inspection").hidden = view === "inspect" || view === "history";
+  $("top-new-inspection").hidden = ["inspect", "history", "usage", "settings"].includes(view);
 }
 
 function renderOverview() {
@@ -555,7 +384,7 @@ function renderOverview() {
         .join("")
     : "";
 
-  renderFarmMaps();
+  if (typeof renderFarmMaps === "function") renderFarmMaps(); // yard.js
   if (typeof renderFarmConditions === "function") renderFarmConditions(); // farm.js
 
   const filters = [
@@ -1331,11 +1160,6 @@ function renderBenchmark() {
 
 /* ── Events ──────────────────────────────────────────────────────────── */
 document.addEventListener("click", (event) => {
-  const mapTarget = event.target.closest("[data-map-hive]");
-  if (mapTarget) {
-    pickMapHive(mapTarget.dataset.mapFarm, mapTarget.dataset.mapHive);
-    return;
-  }
   const target = event.target.closest("button,a");
   if (!target) return;
   if (target.id === "theme-toggle") {
@@ -1458,13 +1282,6 @@ $("add-hive-form").addEventListener("submit", (event) => {
   });
 });
 // The farm form (add and edit) is handled in farm.js.
-document.addEventListener("keydown", (event) => {
-  const node = event.target.closest?.(".map-node");
-  if (node && (event.key === "Enter" || event.key === " ")) {
-    event.preventDefault();
-    pickMapHive(node.dataset.mapFarm, node.dataset.mapHive);
-  }
-});
 $("seed-demo").addEventListener("click", () =>
   withButton($("seed-demo"), async () => {
     const result = await api("/api/seed_apiary", {});

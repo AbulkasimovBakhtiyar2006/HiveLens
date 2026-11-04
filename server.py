@@ -27,7 +27,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from hivelens import __version__, commons, config, engine, place, store
+from hivelens import __version__, commons, config, engine, place, settings, store, usage
 from hivelens.viz import CLASS_COLORS, CLASS_LABELS
 
 Image.MAX_IMAGE_PIXELS = None  # sticky-board photos are ~49 MP
@@ -166,14 +166,18 @@ def build_apiary_overview() -> dict:
 
         row = idx // cols
         col = idx % cols
-        # Hexagonal offset coordinates in meters (approx 2.5m hive spacing)
-        x_m = col * 2.5 + (1.25 if row % 2 else 0.0)
-        y_m = row * 2.2
+        # A position the beekeeper placed on the yard map wins; otherwise a staggered
+        # default grid (2.5 m between hives, 2.2 m between rows) until they place it.
+        placed = h.get("x_m") is not None and h.get("y_m") is not None
+        x_m = h["x_m"] if placed else col * 2.5 + (1.25 if row % 2 else 0.0)
+        y_m = h["y_m"] if placed else row * 2.2
 
         nodes.append({
             "id": h["id"],
             "name": h["name"],
             "farm_id": farm_id,
+            "placed": placed,
+            "color": h.get("color"),
             "location": h.get("location", "Talgar Apiary"),
             "row": row,
             "col": col,
@@ -391,6 +395,9 @@ def _run_inspection_job(job_id: str, payload: dict) -> None:
         hive_id = payload["hive_id"]
         if not _safe_part(str(hive_id)) or not (config.HIVES_DIR / hive_id / "hive.json").exists():
             raise ValueError("unknown hive")
+        hive_name = json.loads((config.HIVES_DIR / hive_id / "hive.json").read_text()).get("name", hive_id)
+        usage.set_context(job_id=job_id, job_kind="inspection", hive_id=hive_id,
+                          label=f"{hive_name}, {payload.get('date') or date.today().isoformat()}")
         insp_date = payload.get("date") or date.today().isoformat()
         days = float(payload.get("days_on_board", 3.0))
         frames_in_hive = int(payload.get("frames_in_hive", 10))
@@ -447,6 +454,8 @@ def _run_inspection_job(job_id: str, payload: dict) -> None:
             _JOBS[job_id]["status"] = "error"
             _JOBS[job_id]["error"] = f"{type(exc).__name__}: {exc}"
         _push_job_event(job_id, {"type": "error", "error": f"{type(exc).__name__}: {exc}"})
+    finally:
+        usage.clear_context()
 
 
 def _run_benchmark_job(job_id: str, payload: dict) -> None:
@@ -461,6 +470,7 @@ def _run_benchmark_job(job_id: str, payload: dict) -> None:
 
         n_boards = int(payload.get("n_boards", 12))
         skip = int(payload.get("skip", 8))
+        usage.set_context(job_id=job_id, job_kind="benchmark", label=f"Benchmark, {n_boards} boards")
         use_muse = bool(payload.get("use_muse", True))
 
         def log(msg):
@@ -480,6 +490,8 @@ def _run_benchmark_job(job_id: str, payload: dict) -> None:
             _JOBS[job_id]["status"] = "error"
             _JOBS[job_id]["error"] = f"{type(exc).__name__}: {exc}"
         _push_job_event(job_id, {"type": "error", "error": f"{type(exc).__name__}: {exc}"})
+    finally:
+        usage.clear_context()
 
 
 # ── HTTP Request Handler ──────────────────────────────────────────────────────
@@ -562,7 +574,9 @@ class HiveLensHandler(BaseHTTPRequestHandler):
         if path.startswith("/static/"):
             # Explicit allowlist: never expose the data directory or local config.
             assets = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "mark.svg": "image/svg+xml",
-                      "farm.css": "text/css; charset=utf-8", "farm.js": "text/javascript; charset=utf-8"}
+                      "farm.css": "text/css; charset=utf-8", "farm.js": "text/javascript; charset=utf-8",
+                      "account.css": "text/css; charset=utf-8", "account.js": "text/javascript; charset=utf-8",
+                      "yard.js": "text/javascript; charset=utf-8"}
             name = path.removeprefix("/static/")
             # Weather icons (Meteocons, MIT): only plain names inside static/weather/.
             if name.startswith("weather/") and _safe_part(name.removeprefix("weather/")) and name.endswith(".svg") \
@@ -581,6 +595,30 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             self.wfile.write(content)
             return
 
+        if path == "/api/settings":
+            self._send_json({"settings": settings.load(), "api": self._api_info()})
+            return
+
+        if path == "/api/profile_photo":
+            photo = settings.photo_path()
+            if not photo.exists():
+                self._send_json({"error": "No profile photo."}, 404)
+                return
+            data = photo.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        if path == "/api/usage":
+            s = settings.load()
+            data = usage.summary(s["prices"], len(store.list_hives()), s["planning"]["inspections_per_hive_month"])
+            self._send_json({**data, "budget": s["planning"]["monthly_budget"]})
+            return
+
         if path == "/api/state":
             eval_path = config.DATA_DIR / "eval" / "varroa_eval.json"
             bench = json.loads(eval_path.read_text()) if eval_path.exists() else None
@@ -591,6 +629,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             self._send_json({
                 "version": __version__,
                 "has_api_key": config.has_api_key(),
+                "profile": settings.load()["profile"],
                 "segment_model": config.SEGMENT_MODEL,
                 "reasoning_model": config.REASONING_MODEL,
                 "thresholds": {
@@ -705,6 +744,13 @@ class HiveLensHandler(BaseHTTPRequestHandler):
 
         self._send_json({"error": "not found"}, 404)
 
+    @staticmethod
+    def _api_info() -> dict:
+        """What the settings page may show about the connection. Never the key itself."""
+        return {"has_api_key": config.has_api_key(), "base_url": config.API_BASE,
+                "segment_model": config.SEGMENT_MODEL, "reasoning_model": config.REASONING_MODEL,
+                "reasoning_effort": config.REASONING_EFFORT}
+
     def _serve_image(self, fpath: Path, max_side: int = 0) -> None:
         cache_key = f"{fpath}:{fpath.stat().st_mtime_ns}:{max_side}"
         if cache_key in _THUMB_CACHE:
@@ -782,6 +828,32 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             self._send_json({"error": f"Invalid JSON: {e}"}, 400)
             return
 
+        if path == "/api/profile_photo":
+            # {"image": "data:image/...;base64,..."} to upload, {"remove": true} to go back to the default
+            try:
+                if body.get("remove"):
+                    saved = settings.set_photo(None)
+                else:
+                    raw = base64.b64decode(str(body.get("image", "")).split(",", 1)[-1], validate=True)
+                    if not raw or len(raw) > 8_000_000:
+                        raise ValueError("Choose a photo under 8 MB.")
+                    saved = settings.set_photo(open_image_bytes(raw))
+            except Exception as exc:
+                msg = str(exc) if isinstance(exc, ValueError) and "photo" in str(exc) else "That file is not a photo HiveLens can read. Use JPEG, PNG or WebP."
+                self._send_json({"error": msg}, 400)
+                return
+            self._send_json({"settings": saved})
+            return
+
+        if path == "/api/settings":
+            try:
+                saved = settings.save(body)
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, 400)
+                return
+            self._send_json({"settings": saved, "api": self._api_info()})
+            return
+
         if path in ("/api/farms", "/api/farm_update"):
             try:
                 fields = farm_fields(body)
@@ -812,6 +884,45 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "Choose an existing farm."}, 400)
                 return
             h = store.create_hive(name, loc, farm_id)
+            self._send_json({"hive": h, "hives": store.list_hives(), "apiary": build_apiary_overview()})
+            return
+
+        if path == "/api/hive_layout":
+            # {"farm_id": ..., "positions": [{"hive_id", "x_m", "y_m"}]} or {"farm_id": ..., "reset": true}
+            farm_id = body.get("farm_id") or None
+            members = {h["id"] for h in store.list_hives() if (h.get("farm_id") or None) == farm_id}
+            try:
+                if body.get("reset"):
+                    for hive_id in members:
+                        store.update_hive(hive_id, x_m=None, y_m=None)
+                else:
+                    positions = body.get("positions")
+                    if not isinstance(positions, list) or not positions or len(positions) > 500:
+                        raise ValueError("Send the hive positions to save.")
+                    for p in positions:
+                        if not isinstance(p, dict) or p.get("hive_id") not in members:
+                            raise ValueError("Every hive must belong to this farm.")
+                        x, y = float(p["x_m"]), float(p["y_m"])
+                        if not (math.isfinite(x) and math.isfinite(y)):
+                            raise ValueError("Positions must be numbers.")
+                    for p in positions:
+                        store.update_hive(p["hive_id"], x_m=float(p["x_m"]), y_m=float(p["y_m"]))
+            except (ValueError, TypeError, KeyError) as exc:
+                self._send_json({"error": str(exc) or "Invalid positions."}, 400)
+                return
+            self._send_json({"hives": store.list_hives(), "apiary": build_apiary_overview()})
+            return
+
+        if path == "/api/hive_style":
+            hive_id = str(body.get("hive_id", ""))
+            if not _safe_part(hive_id) or not (config.HIVES_DIR / hive_id / "hive.json").exists():
+                self._send_json({"error": "Unknown hive."}, 404)
+                return
+            try:
+                h = store.update_hive(hive_id, color=body.get("color") or None)
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, 400)
+                return
             self._send_json({"hive": h, "hives": store.list_hives(), "apiary": build_apiary_overview()})
             return
 
