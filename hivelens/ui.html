@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HiveLens — Hive Inspection & Measurement System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --bg: #0c0d10;
+      --panel: #12141a;
+      --panel-alt: #171a21;
+      --border: #232730;
+      --text: #e5e7eb;
+      --muted: #8b92a5;
+      --accent: #d97706;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+      -webkit-font-smoothing: antialiased;
+    }
+    .panel {
+      background-color: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .panel-alt {
+      background-color: var(--panel-alt);
+      border: 1px solid var(--border);
+    }
+    .tabular { font-variant-numeric: tabular-nums; }
+    input, select, textarea {
+      background-color: #0e1015;
+      border: 1px solid #282c37;
+      color: #f3f4f6;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #d97706;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0c0d10; }
+    ::-webkit-scrollbar-thumb { background: #282c37; border-radius: 2px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP HEADER -->
+  <header class="panel border-t-0 border-x-0 px-6 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
+    <div class="flex items-center gap-3.5">
+      <!-- Custom Geometric Bee + Hexagon SVG Mark -->
+      <div class="w-9 h-9 rounded bg-amber-600/10 border border-amber-500/30 flex items-center justify-center text-amber-500 shrink-0">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 21 7 21 17 12 22 3 17 3 7 12 2" stroke-opacity="0.45"/>
+          <ellipse cx="12" cy="13" rx="3" ry="4.5"/>
+          <line x1="9.3" y1="11.5" x2="14.7" y2="11.5"/>
+          <line x1="9.2" y1="14" x2="14.8" y2="14"/>
+          <path d="M9.5 10.5C7 8.5 5.5 9.5 5.5 11.5C5.5 13 7.5 13 9.2 12.2"/>
+          <path d="M14.5 10.5C17 8.5 18.5 9.5 18.5 11.5C18.5 13 16.5 13 14.8 12.2"/>
+          <path d="M10.8 8.7L9.5 6.8"/>
+          <path d="M13.2 8.7L14.5 6.8"/>
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-2.5">
+          <span class="text-sm font-semibold tracking-tight text-white">HiveLens</span>
+          <span id="version-badge" class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">0.1.0-beta</span>
+          <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">SAM 3.1 + Muse Spark 1.3</span>
+        </div>
+        <p class="text-xs text-zinc-400">A hive inspection agent that measures before it speaks</p>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs (Default: Inspection) -->
+    <nav class="flex items-center gap-1 bg-[#090a0d] p-1 rounded border border-[#232730]">
+      <button onclick="switchTab('inspect')" id="tab-btn-inspect" class="px-3 py-1.5 rounded text-xs font-medium transition flex items-center gap-1.5 bg-amber-600 text-white">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Inspection
+      </button>
+      <button onclick="switchTab('history')" id="tab-btn-history" class="px-3 py-1.5 rounded text-xs font-medium transition flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Hive History
+      </button>
+      <button onclick="switchTab('bench')" id="tab-btn-bench" class="px-3 py-1.5 rounded text-xs font-medium transition flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Benchmark
+      </button>
+      <button onclick="switchTab('apiary')" id="tab-btn-apiary" class="px-3 py-1.5 rounded text-xs font-medium transition flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 19 6 19 14 12 18 5 14 5 6 12 2"/></svg>
+        Apiary Map
+        <span class="text-[9px] font-mono uppercase px-1 py-0.2 bg-zinc-800 text-zinc-400 rounded">Sim</span>
+      </button>
+      <button onclick="switchTab('about')" id="tab-btn-about" class="px-3 py-1.5 rounded text-xs font-medium transition flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        Methodology
+      </button>
+    </nav>
+
+    <!-- API Status -->
+    <div id="api-status-pill" class="flex items-center gap-2 px-3 py-1 rounded panel-alt text-xs font-mono">
+      <span class="w-2 h-2 rounded-full bg-zinc-500"></span>
+      <span class="text-zinc-400">Checking API...</span>
+    </div>
+  </header>
+
+  <!-- BODY -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- SIDEBAR -->
+    <aside class="w-68 panel border-y-0 border-l-0 flex flex-col shrink-0 w-72">
+      <div class="p-3.5 border-b border-[#232730] flex items-center justify-between">
+        <div>
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Hive Registry</h2>
+          <p id="sidebar-count" class="text-[11px] text-zinc-500 font-mono mt-0.5">0 hives</p>
+        </div>
+      </div>
+
+      <div id="hive-list" class="flex-1 overflow-y-auto p-2.5 space-y-1 max-h-[calc(100vh-260px)]"></div>
+
+      <!-- New Hive Form -->
+      <div class="p-3.5 border-t border-[#232730] bg-[#0e1015]">
+        <div class="text-[11px] font-medium text-zinc-400 mb-2">Register Hive</div>
+        <div class="space-y-2">
+          <input id="new-hive-name" type="text" placeholder="Name (e.g. Hive #1)" class="w-full px-2.5 py-1.5 rounded text-xs" />
+          <input id="new-hive-loc" type="text" placeholder="Location (e.g. Talgar apiary)" class="w-full px-2.5 py-1.5 rounded text-xs" />
+          <button onclick="createHive()" class="w-full py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 font-medium text-xs transition">
+            Create Hive
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN VIEWPORT -->
+    <main class="flex-1 overflow-y-auto p-6 space-y-6">
+
+      <!-- ===================================================================== -->
+      <!-- TAB 1: NEW INSPECTION (DEFAULT)                                       -->
+      <!-- ===================================================================== -->
+      <section id="tab-inspect" class="space-y-6 max-w-6xl">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+          <!-- Left Column: Inputs -->
+          <div class="lg:col-span-7 panel rounded-md p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-[#232730] pb-3">
+              <div>
+                <h3 class="text-sm font-semibold text-white">Inspection Inputs</h3>
+                <p class="text-xs text-zinc-400">Provide a sticky board photo, comb frame photo(s), or select benchmark samples</p>
+              </div>
+              <span id="inspect-target-hive" class="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs font-mono"></span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Sticky Board -->
+              <div class="panel-alt rounded p-3.5 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold text-zinc-200">Sticky Board (Varroa Drop)</span>
+                  <span class="text-[10px] font-mono text-zinc-500">SAM 3.1 Tiled</span>
+                </div>
+                <input id="board-upload" type="file" accept="image/*" onchange="previewLocalBoard(this)"
+                  class="block w-full text-xs text-zinc-400 file:mr-2.5 file:py-1 file:px-2.5 file:rounded file:border file:border-zinc-700 file:text-xs file:font-medium file:bg-zinc-800 file:text-zinc-200 hover:file:bg-zinc-700" />
+                <div>
+                  <label class="text-[11px] text-zinc-400 block mb-1">Or select public dataset board (Zenodo):</label>
+                  <select id="sample-board-select" onchange="previewSampleBoard()" class="w-full px-2.5 py-1.5 rounded text-xs">
+                    <option value="">— None —</option>
+                  </select>
+                  <p id="sample-board-meta" class="text-[11px] text-zinc-400 mt-1 font-mono"></p>
+                </div>
+                <div id="board-preview-wrap" class="hidden pt-1">
+                  <img id="board-preview-img" class="w-full h-36 object-cover rounded border border-zinc-700 cursor-pointer" onclick="openLightbox(this.src)" />
+                </div>
+              </div>
+
+              <!-- Frame Photos -->
+              <div class="panel-alt rounded p-3.5 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold text-zinc-200">Frame Photos (Comb)</span>
+                  <button onclick="downloadCommonsDemo()" id="btn-dl-commons" class="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition">
+                    Fetch Commons Demo
+                  </button>
+                </div>
+                <input id="frames-upload" type="file" accept="image/*" multiple onchange="previewLocalFrames(this)"
+                  class="block w-full text-xs text-zinc-400 file:mr-2.5 file:py-1 file:px-2.5 file:rounded file:border file:border-zinc-700 file:text-xs file:font-medium file:bg-zinc-800 file:text-zinc-200 hover:file:bg-zinc-700" />
+                <div>
+                  <label class="text-[11px] text-zinc-400 block mb-1">Or select open-licensed demo frames:</label>
+                  <div id="sample-frames-list" class="max-h-28 overflow-y-auto space-y-1 p-2 rounded bg-[#0e1015] border border-[#282c37] text-xs"></div>
+                </div>
+                <div id="frames-preview-wrap" class="hidden pt-1 flex gap-2 overflow-x-auto"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Parameters -->
+          <div class="lg:col-span-5 panel rounded-md p-5 flex flex-col justify-between space-y-4">
+            <div class="space-y-3.5">
+              <div class="border-b border-[#232730] pb-3">
+                <h3 class="text-sm font-semibold text-white">Parameters & Agent Verification</h3>
+                <p class="text-xs text-zinc-400">Configure sampling duration and multi-pass segmentation</p>
+              </div>
+
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="text-[11px] text-zinc-400 block mb-1">Date</label>
+                  <input id="insp-date" type="date" class="w-full px-2 py-1.5 rounded text-xs font-mono" />
+                </div>
+                <div>
+                  <label class="text-[11px] text-zinc-400 block mb-1">Days in Hive</label>
+                  <input id="insp-days" type="number" step="0.5" min="0.5" max="30" value="3.0" class="w-full px-2.5 py-1.5 rounded text-xs font-mono" />
+                </div>
+                <div>
+                  <label class="text-[11px] text-zinc-400 block mb-1">Total Frames</label>
+                  <input id="insp-frames-count" type="number" min="1" max="40" value="10" class="w-full px-2.5 py-1.5 rounded text-xs font-mono" />
+                </div>
+              </div>
+
+              <div>
+                <label class="text-[11px] text-zinc-400 block mb-1">Board Segmentation Mode</label>
+                <select id="insp-detail" class="w-full px-2.5 py-1.5 rounded text-xs">
+                  <option value="thorough">Thorough (600px SAM 3.1 grid + 300px dark-spot re-check + Muse vote)</option>
+                  <option value="fast">Fast (600px SAM 3.1 grid + Muse vote)</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="text-[11px] text-zinc-400 block mb-1">Inspection Note (optional)</label>
+                <input id="insp-note" type="text" placeholder="e.g. Colony seemed defensive, saw bees with deformed wings" class="w-full px-2.5 py-1.5 rounded text-xs" />
+              </div>
+
+              <label class="flex items-start gap-2.5 pt-1 cursor-pointer">
+                <input id="insp-use-agent" type="checkbox" checked class="mt-0.5 w-3.5 h-3.5 accent-amber-600 rounded" />
+                <span class="text-xs text-zinc-300 leading-snug">
+                  Run <b>Muse Spark</b> agent with epistemic claim verification (requires two visual hypotheses before reading SAM 3.1 measurements)
+                </span>
+              </label>
+            </div>
+
+            <button onclick="startInspection()" id="btn-run-inspection"
+              class="w-full py-2.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs transition flex items-center justify-center gap-2">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run Inspection
+            </button>
+          </div>
+        </div>
+
+        <!-- Live Execution Trace -->
+        <div id="live-job-panel" class="hidden panel rounded-md p-4 space-y-3">
+          <div class="flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              <span id="live-job-title" class="font-medium text-zinc-200">Running pipeline...</span>
+            </div>
+            <span id="live-job-pct" class="font-mono text-zinc-400">0%</span>
+          </div>
+          <div class="w-full h-1.5 bg-zinc-900 rounded overflow-hidden border border-zinc-800">
+            <div id="live-job-bar" class="h-full bg-amber-600 transition-all duration-300" style="width: 2%"></div>
+          </div>
+          <div id="live-agent-feed" class="max-h-44 overflow-y-auto space-y-1 font-mono text-[11px] bg-[#090a0d] p-3 rounded border border-[#232730]"></div>
+        </div>
+
+        <!-- Inspection Output -->
+        <div id="inspection-result-view"></div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 2: HIVE HISTORY & TRENDS                                          -->
+      <!-- ===================================================================== -->
+      <section id="tab-history" class="hidden space-y-6 max-w-6xl">
+        <div class="panel rounded-md p-4 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 id="hist-hive-title" class="text-sm font-semibold text-white">Hive Inspection History</h3>
+            <p class="text-xs text-zinc-400">Longitudinal measurements stored in <code class="font-mono text-zinc-300">data/hives/</code></p>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <select id="hist-inspection-select" onchange="renderSelectedHistoryInspection()" class="px-2.5 py-1.5 rounded text-xs font-mono"></select>
+            <a id="btn-export-zip" href="#" download class="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs font-medium transition flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export ZIP (Photos + CSV)
+            </a>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div class="panel rounded-md p-3.5"><p class="text-[11px] font-mono text-zinc-400 mb-2">mites_per_day</p><canvas id="chart-mites" height="140"></canvas></div>
+          <div class="panel rounded-md p-3.5"><p class="text-[11px] font-mono text-zinc-400 mb-2">honey_kg_hive_est</p><canvas id="chart-honey" height="140"></canvas></div>
+          <div class="panel rounded-md p-3.5"><p class="text-[11px] font-mono text-zinc-400 mb-2">brood_total_pct</p><canvas id="chart-brood" height="140"></canvas></div>
+          <div class="panel rounded-md p-3.5"><p class="text-[11px] font-mono text-zinc-400 mb-2">stores_weeks</p><canvas id="chart-stores" height="140"></canvas></div>
+        </div>
+
+        <div id="history-inspection-detail"></div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 3: BENCHMARK                                                      -->
+      <!-- ===================================================================== -->
+      <section id="tab-bench" class="hidden space-y-6 max-w-6xl">
+        <div class="panel rounded-md p-4 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 class="text-sm font-semibold text-white">Held-Out Varroa Benchmark (Divasón et al. 2023, Zenodo CC BY 4.0)</h3>
+            <p class="text-xs text-zinc-400">Zero-shot evaluation on boards 9–20 (128 expert-annotated mites). Boards 1–8 were used for development and are excluded.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-zinc-400">Boards:</label>
+            <input id="bench-n" type="number" value="12" min="1" max="30" class="w-16 px-2 py-1 rounded text-xs font-mono" />
+            <button onclick="runBenchmark()" class="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs font-medium text-zinc-200 transition">
+              Run Evaluation
+            </button>
+          </div>
+        </div>
+
+        <div id="bench-kpis" class="grid grid-cols-2 md:grid-cols-5 gap-3.5"></div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div class="lg:col-span-2 panel rounded-md p-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-3">Expert Annotations vs HiveLens Counts</h4>
+            <canvas id="chart-bench" height="135"></canvas>
+          </div>
+
+          <div class="panel rounded-md p-4 space-y-3">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Development Progression (Boards 1–8)</h4>
+            <div class="divide-y divide-[#232730] text-xs">
+              <div class="py-2">
+                <div class="font-medium text-zinc-200">1. SAM 3.1 (`varroa mite`, 1344 px tiles)</div>
+                <div class="text-zinc-400 font-mono text-[11px] mt-0.5">0/3 mites found (mite ~30px is lost in resize)</div>
+              </div>
+              <div class="py-2">
+                <div class="font-medium text-zinc-200">2. Crop Scale Probe (`probe_prompts.py`)</div>
+                <div class="text-zinc-400 font-mono text-[11px] mt-0.5">1344px: 0/3 · 600px: 2/3 · 300px: 3/3 (0 FP)</div>
+              </div>
+              <div class="py-2">
+                <div class="font-medium text-zinc-200">3. 600px Grid + 300px SAM Re-check</div>
+                <div class="text-zinc-400 font-mono text-[11px] mt-0.5">F1 0.47 (precision 0.70, recall 0.35)</div>
+              </div>
+              <div class="py-2">
+                <div class="font-medium text-zinc-200">4. + Muse Spark Contact-Sheet Vote</div>
+                <div class="text-zinc-400 font-mono text-[11px] mt-0.5">F1 0.76 (precision 0.67, recall 0.88)</div>
+              </div>
+              <div class="py-2">
+                <div class="font-medium text-amber-400">5. + Shape & Redness Checks (`fitEllipse`)</div>
+                <div class="text-zinc-300 font-mono text-[11px] mt-0.5">F1 0.83 on dev (boards 3–8) · F1 0.72 on held-out</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel rounded-md p-4 overflow-x-auto">
+          <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-3">Per-Board Held-Out Breakdown</h4>
+          <table class="w-full text-left text-xs border-collapse tabular">
+            <thead>
+              <tr class="border-b border-[#232730] text-zinc-400 text-[11px] font-mono">
+                <th class="py-2 px-3">image</th>
+                <th class="py-2 px-3">experts</th>
+                <th class="py-2 px-3">hivelens</th>
+                <th class="py-2 px-3">muse_votes</th>
+                <th class="py-2 px-3">rejected</th>
+                <th class="py-2 px-3">classic_cv</th>
+                <th class="py-2 px-3">precision</th>
+                <th class="py-2 px-3">recall</th>
+                <th class="py-2 px-3">f1</th>
+              </tr>
+            </thead>
+            <tbody id="bench-table-body" class="divide-y divide-[#232730] font-mono text-zinc-300"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 4: APIARY MAP (SYNTHETIC FLEET PREVIEW)                           -->
+      <!-- ===================================================================== -->
+      <section id="tab-apiary" class="hidden space-y-5 max-w-6xl">
+
+        <!-- Explicit Synthetic Data Disclaimer Banner -->
+        <div class="rounded-md p-4 bg-amber-950/20 border border-amber-600/40 flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-mono font-semibold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Synthetic Data Notice</span>
+                <span class="text-xs font-semibold text-zinc-200">Multi-Hive Apiary Spatial View & Drift Simulation</span>
+              </div>
+              <p class="text-xs text-zinc-400 mt-1 max-w-3xl leading-relaxed">
+                While single-hive inspections and the Varroa benchmark run on real images via <code class="font-mono text-zinc-300">sam-3.1</code> and <code class="font-mono text-zinc-300">muse-spark-1.3</code>, the multi-hive fleet scenario below uses <b>synthetic longitudinal trajectories</b> to illustrate how HiveLens tracks colony recovery, worsening trends, and neighbor mite-drift risk across an apiary.
+              </p>
+            </div>
+          </div>
+          <button onclick="seedDemoApiary()" id="btn-seed-apiary" class="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium transition shrink-0">
+            Load Synthetic Apiary (8 Hives)
+          </button>
+        </div>
+
+        <div id="apiary-kpis" class="grid grid-cols-2 md:grid-cols-6 gap-3"></div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+          <!-- Technical SVG Spatial Plot -->
+          <div class="xl:col-span-2 panel rounded-md p-4">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3 border-b border-[#232730] pb-2.5">
+              <div>
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-300">Apiary Spatial Layout (2.5m Grid)</h3>
+                <p class="text-[11px] text-zinc-500">Dashed vectors indicate potential Varroa drift from high-drop colonies (&lt; 4.0m foraging radius)</p>
+              </div>
+              <div class="flex items-center gap-3 text-[11px] font-mono text-zinc-400">
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>good</span>
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span>watch</span>
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-rose-500"></span>act</span>
+              </div>
+            </div>
+            <div id="honeycomb-map" class="min-h-[320px] flex items-center justify-center bg-[#090a0d] rounded border border-[#232730] p-4"></div>
+          </div>
+
+          <!-- Right Column: Drift Alerts & Selected Colony -->
+          <div class="space-y-4">
+            <div class="panel rounded-md p-4">
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Epidemiological & Trend Flags</h3>
+              <div id="drift-alerts-box" class="space-y-2 max-h-52 overflow-y-auto"></div>
+            </div>
+            <div class="panel rounded-md p-4" id="selected-hive-card"></div>
+          </div>
+        </div>
+
+        <!-- Fleet Table -->
+        <div class="panel rounded-md p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Apiary Colony Matrix</h3>
+            <span class="text-[11px] font-mono text-zinc-500">Click row to select hive</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs tabular">
+              <thead>
+                <tr class="border-b border-[#232730] text-zinc-400 font-mono text-[11px]">
+                  <th class="py-2 px-3">colony</th>
+                  <th class="py-2 px-3">status</th>
+                  <th class="py-2 px-3">mites/day</th>
+                  <th class="py-2 px-3">delta</th>
+                  <th class="py-2 px-3">honey_pct</th>
+                  <th class="py-2 px-3">brood_pct</th>
+                  <th class="py-2 px-3">stores_wks</th>
+                  <th class="py-2 px-3">drift_exposure</th>
+                  <th class="py-2 px-3 text-right">inspect</th>
+                </tr>
+              </thead>
+              <tbody id="fleet-table-body" class="divide-y divide-[#232730]"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 5: METHODOLOGY                                                    -->
+      <!-- ===================================================================== -->
+      <section id="tab-about" class="hidden space-y-5 max-w-5xl">
+        <div class="panel rounded-md p-6 space-y-4">
+          <h3 class="text-base font-semibold text-white">System Architecture & Epistemic Verification</h3>
+          <p class="text-xs text-zinc-400 leading-relaxed">
+            HiveLens separates visual segmentation, deterministic biometric measurement, and LLM reasoning so that every statement in a report can be traced back to a verified mask measurement.
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            <div class="panel-alt rounded p-4 space-y-1.5">
+              <div class="text-[11px] font-mono text-amber-500">01 / Multi-Scale SAM 3.1 Segmentation</div>
+              <div class="text-xs font-semibold text-zinc-200">Sticky Boards (49 MP) & Comb Frames</div>
+              <p class="text-xs text-zinc-400 leading-relaxed">
+                On 8064×6048 sticky boards, a Varroa mite is ~30 px wide. Probing showed SAM 3.1 recall rises from 0/3 at 1344 px crops to 3/3 at 300 px crops. HiveLens runs a 600 px grid pass, re-checks unexplained dark spots with 300 px SAM crops, and sends remaining candidates to Muse Spark on 6×6 numbered contact sheets.
+              </p>
+            </div>
+            <div class="panel-alt rounded p-4 space-y-1.5">
+              <div class="text-[11px] font-mono text-amber-500">02 / Deterministic Biometric Filtering</div>
+              <div class="text-xs font-semibold text-zinc-200">Physical Plausibility Checks (`hivelens/measure.py`)</div>
+              <p class="text-xs text-zinc-400 leading-relaxed">
+                Every candidate detection is checked on the raw image via OpenCV contour & ellipse fitting: body area fraction, reddish-brown chrominance relative to the board (`R-G >= 10`), aspect ratio (`<= 1.8`), and oval fill (`>= 0.90`). Wax crumbs and elongated insect fragments are rejected.
+              </p>
+            </div>
+            <div class="panel-alt rounded p-4 space-y-1.5">
+              <div class="text-[11px] font-mono text-amber-500">03 / Epistemic Agent Gate</div>
+              <div class="text-xs font-semibold text-zinc-200">Blind Hypotheses Before Measurements (`hivelens/agent.py`)</div>
+              <p class="text-xs text-zinc-400 leading-relaxed">
+                `get_measurements` is locked until Muse Spark commits to at least two quantitative visual hypotheses via `check_claim`. Each claim returns `verified`, `rejected`, or `unverifiable`. In `submit_report`, any finding that does not cite a verified claim ID is automatically discarded.
+              </p>
+            </div>
+            <div class="panel-alt rounded p-4 space-y-1.5">
+              <div class="text-[11px] font-mono text-amber-500">04 / Rule-Based Status & Limitations</div>
+              <div class="text-xs font-semibold text-zinc-200">Non-Overridable Traffic Light (`hivelens/engine.py`)</div>
+              <p class="text-xs text-zinc-400 leading-relaxed">
+                Thresholds in `config.py` determine `good`, `watch`, or `act`. The language model explains the status and suggests practical checks, but cannot alter the rule verdict or issue a veterinary diagnosis.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- LIGHTBOX -->
+  <div id="lightbox" onclick="this.classList.add('hidden')" class="hidden fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-6 cursor-zoom-out">
+    <img id="lightbox-img" class="max-w-full max-h-full rounded border border-zinc-700" />
+  </div>
+
+  <script>
+    let STATE = null;
+    let CURRENT_HIVE_ID = null;
+    let CURRENT_HIVE_DATA = null;
+    let LOCAL_BOARD_B64 = null;
+    let LOCAL_FRAMES_B64 = [];
+    let CHARTS = {};
+
+    const STATUS_BADGE = {
+      good: '<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/60"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>GOOD</span>',
+      watch: '<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-amber-950/60 text-amber-400 border border-amber-800/60"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>WATCH</span>',
+      act: '<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-rose-950/60 text-rose-400 border border-rose-800/60"><span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>ACT</span>',
+      unknown: '<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-zinc-900 text-zinc-400 border border-zinc-800"><span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span>NO DATA</span>',
+    };
+
+    const DOT_CLS = {
+      good: 'bg-emerald-400',
+      watch: 'bg-amber-400',
+      act: 'bg-rose-500',
+      unknown: 'bg-zinc-600'
+    };
+
+    document.getElementById('insp-date').value = new Date().toISOString().split('T')[0];
+
+    function openLightbox(src) {
+      document.getElementById('lightbox-img').src = src;
+      document.getElementById('lightbox').classList.remove('hidden');
+    }
+
+    function switchTab(tab) {
+      ['inspect', 'history', 'bench', 'apiary', 'about'].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById(`tab-btn-${t}`);
+        if (t === tab) {
+          btn.className = 'px-3 py-1.5 rounded text-xs font-medium transition flex items-center gap-1.5 bg-amber-600 text-white';
+        } else {
+          btn.className = 'px-3 py-1.5 rounded text-xs font-medium transition flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200';
+        }
+      });
+      if (tab === 'history' && CURRENT_HIVE_ID) loadHiveDetails(CURRENT_HIVE_ID);
+      if (tab === 'bench') renderBenchmark();
+      if (tab === 'apiary') renderApiaryTab();
+    }
+
+    async function loadState(preserveHive = true) {
+      const res = await fetch('/api/state');
+      STATE = await res.json();
+
+      document.getElementById('version-badge').textContent = STATE.version;
+      const pill = document.getElementById('api-status-pill');
+      if (STATE.has_api_key) {
+        pill.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span class="text-zinc-300">${STATE.segment_model} · ${STATE.reasoning_model}</span>`;
+      } else {
+        pill.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500"></span><span class="text-rose-400">MODEL_API_KEY missing</span>`;
+      }
+
+      if (!preserveHive || !CURRENT_HIVE_ID || !STATE.hives.some(h => h.id === CURRENT_HIVE_ID)) {
+        CURRENT_HIVE_ID = STATE.hives.length ? STATE.hives[0].id : null;
+      }
+
+      renderSidebar();
+      populateSamples();
+      renderBenchmark();
+      renderApiaryTab();
+
+      if (CURRENT_HIVE_ID) {
+        await loadHiveDetails(CURRENT_HIVE_ID);
+      }
+    }
+
+    function renderSidebar() {
+      const list = document.getElementById('hive-list');
+      const nodes = STATE.apiary.hives || [];
+      document.getElementById('sidebar-count').textContent = `${nodes.length} hive(s) registered`;
+
+      if (!nodes.length) {
+        list.innerHTML = `
+          <div class="p-3.5 rounded bg-[#0e1015] border border-[#232730] text-xs text-zinc-400 space-y-2">
+            <p>No hives in registry. Create a hive below to begin an inspection.</p>
+          </div>`;
+        document.getElementById('inspect-target-hive').textContent = 'No hive selected';
+        return;
+      }
+
+      list.innerHTML = nodes.map(n => {
+        const active = n.id === CURRENT_HIVE_ID;
+        const mpdTxt = n.mites_per_day != null ? `${n.mites_per_day}/d` : '—';
+        return `
+          <div onclick="selectHive('${n.id}')" class="cursor-pointer px-3 py-2 rounded border transition flex items-center justify-between ${
+            active ? 'bg-zinc-800/90 border-amber-600/60 text-white' : 'bg-[#0e1015] border-[#232730] text-zinc-300 hover:bg-zinc-900'
+          }">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="w-2 h-2 rounded-full shrink-0 ${DOT_CLS[n.overall] || DOT_CLS.unknown}"></span>
+              <div class="truncate">
+                <div class="text-xs font-medium truncate">${n.name}</div>
+                <div class="text-[10px] text-zinc-500 font-mono truncate">${n.location || 'apiary'} · ${n.inspection_count} insp</div>
+              </div>
+            </div>
+            <div class="text-right shrink-0 ml-2 font-mono text-[11px] text-zinc-300 tabular">${mpdTxt}</div>
+          </div>
+        `;
+      }).join('');
+
+      const activeNode = nodes.find(n => n.id === CURRENT_HIVE_ID);
+      if (activeNode) {
+        document.getElementById('inspect-target-hive').textContent = activeNode.name;
+      }
+    }
+
+    async function selectHive(hiveId) {
+      CURRENT_HIVE_ID = hiveId;
+      renderSidebar();
+      renderApiaryTab();
+      await loadHiveDetails(hiveId);
+    }
+
+    function renderApiaryTab() {
+      const { summary, hives, drift_links } = STATE.apiary;
+      const kpis = [
+        { label: 'Colonies', val: summary.total_hives, col: 'text-white' },
+        { label: 'Good', val: summary.good, col: 'text-emerald-400' },
+        { label: 'Watch', val: summary.watch, col: 'text-amber-400' },
+        { label: 'Act (High Drop)', val: summary.act, col: 'text-rose-400' },
+        { label: 'Improving Trend', val: summary.improving, col: 'text-sky-400' },
+        { label: 'Drift Exposure', val: summary.at_drift_risk, col: 'text-amber-300' },
+      ];
+      document.getElementById('apiary-kpis').innerHTML = kpis.map(k => `
+        <div class="panel rounded-md p-3">
+          <div class="text-[11px] text-zinc-400">${k.label}</div>
+          <div class="text-xl font-semibold font-mono mt-0.5 tabular ${k.col}">${k.val}</div>
+        </div>
+      `).join('');
+
+      const mapEl = document.getElementById('honeycomb-map');
+      if (!hives.length) {
+        mapEl.innerHTML = `<div class="text-center py-10 text-xs text-zinc-400">No colonies loaded. Click "Load Synthetic Apiary (8 Hives)" above to preview spatial tracking.</div>`;
+      } else {
+        // Render clean technical SVG plot
+        const W = 680, H = 300;
+        const pos = {};
+        hives.forEach((h, i) => {
+          const col = i % 4;
+          const row = Math.floor(i / 4);
+          const cx = 110 + col * 150 + (row % 2 ? 45 : 0);
+          const cy = 90 + row * 125;
+          pos[h.id] = { cx, cy, h };
+        });
+
+        const hexPoints = (cx, cy, r) => {
+          const pts = [];
+          for (let a = 0; a < 6; a++) {
+            const rad = (Math.PI / 180) * (60 * a - 30);
+            pts.push(`${(cx + r * Math.cos(rad)).toFixed(1)},${(cy + r * Math.sin(rad)).toFixed(1)}`);
+          }
+          return pts.join(' ');
+        };
+
+        const strokeMap = { good: '#10b981', watch: '#f59e0b', act: '#f43f5e', unknown: '#52525b' };
+        const fillMap = { good: '#064e3b', watch: '#451a03', act: '#4c0519', unknown: '#18181b' };
+
+        const linesSvg = drift_links.map(l => {
+          const a = pos[l.from_id], b = pos[l.to_id];
+          if (!a || !b) return '';
+          return `<line x1="${a.cx}" y1="${a.cy}" x2="${b.cx}" y2="${b.cy}" stroke="#f43f5e" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.7" />`;
+        }).join('');
+
+        const nodesSvg = Object.values(pos).map(({ cx, cy, h }) => {
+          const isSel = h.id === CURRENT_HIVE_ID;
+          const st = strokeMap[h.overall] || strokeMap.unknown;
+          const fl = fillMap[h.overall] || fillMap.unknown;
+          const shortName = h.name.split('·')[0].trim();
+          const mpd = h.mites_per_day != null ? `${h.mites_per_day}/d` : '—';
+          const delta = h.mites_per_day_change != null ? (h.mites_per_day_change > 0 ? `+${h.mites_per_day_change}` : `${h.mites_per_day_change}`) : '';
+          return `
+            <g class="cursor-pointer" onclick="selectHive('${h.id}')">
+              ${isSel ? `<polygon points="${hexPoints(cx, cy, 48)}" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-dasharray="3 2"/>` : ''}
+              <polygon points="${hexPoints(cx, cy, 42)}" fill="${fl}" fill-opacity="0.55" stroke="${st}" stroke-width="${isSel ? 2.2 : 1.5}"/>
+              <text x="${cx}" y="${cy - 12}" text-anchor="middle" fill="#e4e4e7" font-size="10" font-family="JetBrains Mono" font-weight="600">${shortName}</text>
+              <text x="${cx}" y="${cy + 4}" text-anchor="middle" fill="#ffffff" font-size="12" font-family="JetBrains Mono" font-weight="700">${mpd}</text>
+              <text x="${cx}" y="${cy + 18}" text-anchor="middle" fill="#a1a1aa" font-size="9" font-family="JetBrains Mono">Δ ${delta || '0.0'}</text>
+            </g>
+          `;
+        }).join('');
+
+        mapEl.innerHTML = `
+          <svg viewBox="0 0 ${W} ${H}" class="w-full h-auto max-h-[320px]">
+            <defs>
+              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#181b22" stroke-width="1"/>
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#grid)" />
+            ${linesSvg}
+            ${nodesSvg}
+          </svg>
+        `;
+      }
+
+      // Alerts list
+      const alertsBox = document.getElementById('drift-alerts-box');
+      const items = [];
+      hives.filter(h => h.overall === 'act').forEach(h => {
+        items.push(`<div class="p-2.5 rounded bg-rose-950/30 border border-rose-800/50 text-xs">
+          <div class="font-mono font-semibold text-rose-400">[ACT] ${h.name}</div>
+          <div class="text-zinc-400 text-[11px] mt-0.5">Mite drop ${h.mites_per_day}/day exceeds high threshold (${STATE.thresholds.mites_per_day_high}/day).</div>
+        </div>`);
+      });
+      drift_links.forEach(l => {
+        items.push(`<div class="p-2.5 rounded bg-amber-950/25 border border-amber-800/50 text-xs">
+          <div class="font-mono font-semibold text-amber-400">[DRIFT RISK · ${l.distance_m}m] ${l.to_name}</div>
+          <div class="text-zinc-400 text-[11px] mt-0.5">Adjacent to high-infestation colony ${l.from_name}.</div>
+        </div>`);
+      });
+      hives.filter(h => h.trend === 'improving').forEach(h => {
+        items.push(`<div class="p-2.5 rounded bg-emerald-950/25 border border-emerald-800/50 text-xs">
+          <div class="font-mono font-semibold text-emerald-400">[RECOVERY] ${h.name}</div>
+          <div class="text-zinc-400 text-[11px] mt-0.5">Mite drop changed by ${h.mites_per_day_change}/day since prior inspection.</div>
+        </div>`);
+      });
+      alertsBox.innerHTML = items.length ? items.join('') : '<p class="text-xs text-zinc-500">No active alerts.</p>';
+
+      // Selected hive card
+      const sel = hives.find(h => h.id === CURRENT_HIVE_ID);
+      const selCard = document.getElementById('selected-hive-card');
+      if (!sel) {
+        selCard.innerHTML = '<p class="text-xs text-zinc-500">Select a colony to view metrics.</p>';
+      } else {
+        selCard.innerHTML = `
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <div class="text-xs font-semibold text-white">${sel.name}</div>
+              <div class="text-[11px] text-zinc-500 font-mono">${sel.location} · ${sel.latest_date || '—'}</div>
+            </div>
+            ${STATUS_BADGE[sel.overall] || STATUS_BADGE.unknown}
+          </div>
+          <div class="grid grid-cols-3 gap-2 my-3 font-mono text-center">
+            <div class="p-2 rounded bg-[#090a0d] border border-[#232730]">
+              <div class="text-[10px] text-zinc-500">mites/d</div>
+              <div class="text-xs font-semibold text-zinc-200 mt-0.5">${sel.mites_per_day ?? '—'}</div>
+            </div>
+            <div class="p-2 rounded bg-[#090a0d] border border-[#232730]">
+              <div class="text-[10px] text-zinc-500">brood</div>
+              <div class="text-xs font-semibold text-zinc-200 mt-0.5">${sel.brood_total_pct != null ? sel.brood_total_pct + '%' : '—'}</div>
+            </div>
+            <div class="p-2 rounded bg-[#090a0d] border border-[#232730]">
+              <div class="text-[10px] text-zinc-500">stores</div>
+              <div class="text-xs font-semibold text-zinc-200 mt-0.5">${sel.stores_weeks != null ? sel.stores_weeks + 'w' : '—'}</div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="switchTab('history')" class="flex-1 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 transition">History</button>
+            <button onclick="switchTab('inspect')" class="flex-1 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-xs font-medium text-white transition">Inspect</button>
+          </div>
+        `;
+      }
+
+      // Table
+      document.getElementById('fleet-table-body').innerHTML = hives.map(h => {
+        const d = h.mites_per_day_change;
+        const dHtml = d == null ? '—' : (
+          d > 0 ? `<span class="text-rose-400 font-mono">+${d}</span>` :
+          d < 0 ? `<span class="text-emerald-400 font-mono">${d}</span>` : `<span class="text-zinc-500 font-mono">0.0</span>`
+        );
+        const driftTxt = h.drift_risk_from.length
+          ? `<span class="font-mono text-[11px] text-amber-400">Near ${h.drift_risk_from.map(x => x.name.split('·')[0]).join(', ')}</span>`
+          : '<span class="text-zinc-500 font-mono">none</span>';
+        return `
+          <tr class="hover:bg-zinc-900/60 cursor-pointer" onclick="selectHive('${h.id}')">
+            <td class="py-2 px-3 font-medium text-zinc-200">${h.name}</td>
+            <td class="py-2 px-3">${STATUS_BADGE[h.overall] || STATUS_BADGE.unknown}</td>
+            <td class="py-2 px-3 font-mono text-zinc-200">${h.mites_per_day ?? '—'}</td>
+            <td class="py-2 px-3">${dHtml}</td>
+            <td class="py-2 px-3 font-mono text-zinc-300">${h.honey_pct != null ? h.honey_pct + '%' : '—'}</td>
+            <td class="py-2 px-3 font-mono text-zinc-300">${h.brood_total_pct != null ? h.brood_total_pct + '%' : '—'}</td>
+            <td class="py-2 px-3 font-mono text-zinc-300">${h.stores_weeks != null ? h.stores_weeks + 'w' : '—'}</td>
+            <td class="py-2 px-3">${driftTxt}</td>
+            <td class="py-2 px-3 text-right">
+              <button onclick="event.stopPropagation(); selectHive('${h.id}'); switchTab('history')" class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-mono">view</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function populateSamples() {
+      const boardSel = document.getElementById('sample-board-select');
+      const curBoard = boardSel.value;
+      boardSel.innerHTML = '<option value="">— None —</option>' + STATE.samples.boards.map(b =>
+        `<option value="${b.name}">${b.name} ${b.experts != null ? `(expert count: ${b.experts})` : ''}</option>`
+      ).join('');
+      if (curBoard) boardSel.value = curBoard;
+
+      const framesBox = document.getElementById('sample-frames-list');
+      if (!STATE.samples.frames.length) {
+        framesBox.innerHTML = '<p class="text-[11px] text-zinc-500">No demo frames downloaded. Click "Fetch Commons Demo".</p>';
+      } else {
+        framesBox.innerHTML = STATE.samples.frames.map(f => `
+          <label class="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-white">
+            <input type="checkbox" value="${f.name}" class="sample-frame-cb accent-amber-600" onchange="previewSampleFrames()" />
+            <span class="truncate font-mono text-[11px]">${f.name}</span>
+          </label>
+        `).join('');
+      }
+    }
+
+    function previewSampleBoard() {
+      const val = document.getElementById('sample-board-select').value;
+      const wrap = document.getElementById('board-preview-wrap');
+      const meta = document.getElementById('sample-board-meta');
+      if (!val) {
+        wrap.classList.add('hidden');
+        meta.textContent = '';
+        return;
+      }
+      LOCAL_BOARD_B64 = null;
+      document.getElementById('board-upload').value = '';
+      const info = STATE.samples.boards.find(b => b.name === val);
+      meta.textContent = info && info.experts != null ? `Expert annotation: ${info.experts} mites` : '';
+      document.getElementById('board-preview-img').src = `/api/sample_preview/board/${encodeURIComponent(val)}?max_side=900`;
+      wrap.classList.remove('hidden');
+    }
+
+    function previewLocalBoard(input) {
+      const file = input.files[0];
+      if (!file) return;
+      document.getElementById('sample-board-select').value = '';
+      document.getElementById('sample-board-meta').textContent = `File: ${file.name}`;
+      const reader = new FileReader();
+      reader.onload = e => {
+        LOCAL_BOARD_B64 = e.target.result;
+        document.getElementById('board-preview-img').src = LOCAL_BOARD_B64;
+        document.getElementById('board-preview-wrap').classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function previewSampleFrames() {
+      const checked = [...document.querySelectorAll('.sample-frame-cb:checked')].map(cb => cb.value);
+      const wrap = document.getElementById('frames-preview-wrap');
+      if (!checked.length && !LOCAL_FRAMES_B64.length) {
+        wrap.classList.add('hidden');
+        return;
+      }
+      wrap.classList.remove('hidden');
+      wrap.innerHTML = checked.map(name =>
+        `<img src="/api/sample_preview/frame/${encodeURIComponent(name)}?max_side=600" onclick="openLightbox(this.src)" class="h-20 w-32 object-cover rounded border border-zinc-700 cursor-pointer shrink-0" />`
+      ).join('');
+    }
+
+    function previewLocalFrames(input) {
+      LOCAL_FRAMES_B64 = [];
+      const files = [...input.files];
+      const wrap = document.getElementById('frames-preview-wrap');
+      if (!files.length) return;
+      wrap.classList.remove('hidden');
+      wrap.innerHTML = '';
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = e => {
+          LOCAL_FRAMES_B64.push(e.target.result);
+          const img = document.createElement('img');
+          img.src = e.target.result;
+          img.className = 'h-20 w-32 object-cover rounded border border-zinc-700 cursor-pointer shrink-0';
+          img.onclick = () => openLightbox(img.src);
+          wrap.appendChild(img);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function downloadCommonsDemo() {
+      const btn = document.getElementById('btn-dl-commons');
+      btn.textContent = 'Fetching...';
+      btn.disabled = true;
+      await fetch('/api/commons', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({}) });
+      await loadState(true);
+      btn.textContent = 'Frames Ready';
+      btn.disabled = false;
+    }
+
+    async function createHive() {
+      const name = document.getElementById('new-hive-name').value.trim();
+      const location = document.getElementById('new-hive-loc').value.trim();
+      if (!name) return;
+      const res = await fetch('/api/hives', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name, location })
+      });
+      const data = await res.json();
+      document.getElementById('new-hive-name').value = '';
+      if (data.hive) {
+        CURRENT_HIVE_ID = data.hive.id;
+        await loadState(true);
+      }
+    }
+
+    async function seedDemoApiary() {
+      const btn = document.getElementById('btn-seed-apiary');
+      btn.textContent = 'Loading...';
+      await fetch('/api/seed_apiary', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
+      await loadState(false);
+      btn.textContent = 'Load Synthetic Apiary (8 Hives)';
+    }
+
+    async function startInspection() {
+      if (!CURRENT_HIVE_ID) {
+        alert('Please create or select a hive in the left sidebar first.');
+        return;
+      }
+      const boardSample = document.getElementById('sample-board-select').value;
+      const frameSamples = [...document.querySelectorAll('.sample-frame-cb:checked')].map(c => c.value);
+
+      if (!LOCAL_BOARD_B64 && !boardSample && !LOCAL_FRAMES_B64.length && !frameSamples.length) {
+        alert('Select or upload at least one sticky board or frame photo.');
+        return;
+      }
+
+      const payload = {
+        hive_id: CURRENT_HIVE_ID,
+        date: document.getElementById('insp-date').value,
+        days_on_board: parseFloat(document.getElementById('insp-days').value || '3'),
+        frames_in_hive: parseInt(document.getElementById('insp-frames-count').value || '10', 10),
+        board_refine: document.getElementById('insp-detail').value === 'thorough',
+        note: document.getElementById('insp-note').value,
+        use_agent: document.getElementById('insp-use-agent').checked,
+        board_b64: LOCAL_BOARD_B64,
+        board_sample: boardSample || null,
+        frames_b64: LOCAL_FRAMES_B64,
+        frame_samples: frameSamples,
+      };
+
+      const panel = document.getElementById('live-job-panel');
+      const feed = document.getElementById('live-agent-feed');
+      const bar = document.getElementById('live-job-bar');
+      const pct = document.getElementById('live-job-pct');
+      const title = document.getElementById('live-job-title');
+
+      panel.classList.remove('hidden');
+      feed.innerHTML = '<div class="text-zinc-500">[init] Starting SAM 3.1 + Muse Spark pipeline...</div>';
+      bar.style.width = '4%';
+      pct.textContent = '4%';
+
+      const res = await fetch('/api/inspect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.error) {
+        feed.innerHTML = `<div class="text-rose-400">[error] ${data.error}</div>`;
+        return;
+      }
+
+      const es = new EventSource(`/api/jobs/${data.job_id}/stream`);
+      es.onmessage = async (msg) => {
+        const ev = JSON.parse(msg.data);
+        if (ev.type === 'progress') {
+          const p = Math.round((ev.frac || 0) * 100);
+          bar.style.width = `${Math.max(4, p)}%`;
+          pct.textContent = `${p}%`;
+          title.textContent = ev.msg || 'Processing...';
+        } else if (ev.type === 'agent_event') {
+          const a = ev.event;
+          const line = document.createElement('div');
+          if (a.type === 'claim') {
+            line.className = a.verdict === 'verified' ? 'text-emerald-400' : 'text-rose-400';
+            line.textContent = `[claim:${a.verdict.toUpperCase()}] ${a.statement} (${a.reason})`;
+          } else if (a.type === 'tool_call') {
+            line.className = 'text-amber-400';
+            line.textContent = `[tool] ${a.name}(${JSON.stringify(a.args || {}).slice(0, 120)})`;
+          } else if (a.type === 'thought') {
+            line.className = 'text-zinc-400';
+            line.textContent = `[thought] ${a.text.slice(0, 160)}`;
+          }
+          if (line.textContent) {
+            feed.appendChild(line);
+            feed.scrollTop = feed.scrollHeight;
+          }
+        } else if (ev.type === 'done') {
+          es.close();
+          bar.style.width = '100%';
+          pct.textContent = '100%';
+          title.textContent = 'Inspection complete';
+          renderInspectionCard(CURRENT_HIVE_ID, ev.result, 'inspection-result-view');
+          await loadState(true);
+        } else if (ev.type === 'error') {
+          es.close();
+          title.textContent = 'Inspection failed';
+          feed.innerHTML += `<div class="text-rose-400 mt-1">[error] ${ev.error}</div>`;
+        }
+      };
+    }
+
+    function renderInspectionCard(hiveId, rec, containerId) {
+      const container = document.getElementById(containerId);
+      if (!rec) {
+        container.innerHTML = '';
+        return;
+      }
+      const status = rec.status || {};
+      const levels = status.levels || {};
+      const m = rec.metrics || {};
+      const report = rec.report;
+      const files = rec.files || {};
+
+      const levelPills = Object.entries(levels).map(([k, v]) =>
+        `<span class="text-xs text-zinc-400 font-mono">${k}: ${STATUS_BADGE[v] || v}</span>`
+      ).join('<span class="text-zinc-700 mx-2">|</span>');
+
+      const flagsHtml = (status.flags || []).map(f =>
+        `<div class="px-3 py-2 rounded bg-amber-950/30 border border-amber-800/50 text-amber-300 text-xs font-mono">[flag] ${f}</div>`
+      ).join('');
+
+      const kpiCards = [
+        { label: 'Mites / day', val: m.mites_per_day ?? '—', delta: m.mites_per_day_change, inv: true },
+        { label: 'Mites counted', val: m.mite_count ?? '—', delta: null },
+        { label: 'Capped honey, %', val: m.honey_pct != null ? `${m.honey_pct}%` : '—', delta: null },
+        { label: 'Brood, %', val: m.brood_total_pct != null ? `${m.brood_total_pct}%` : '—', delta: m.brood_total_pct_change },
+        { label: 'Stores, weeks', val: m.stores_weeks != null ? `${m.stores_weeks}` : '—', delta: null },
+      ].map(c => {
+        let dHtml = '';
+        if (c.delta != null) {
+          const good = c.inv ? c.delta <= 0 : c.delta >= 0;
+          dHtml = `<span class="text-[11px] font-mono ${good ? 'text-emerald-400' : 'text-rose-400'}">${c.delta > 0 ? '+' : ''}${c.delta}</span>`;
+        }
+        return `
+          <div class="p-3 rounded bg-[#090a0d] border border-[#232730] tabular">
+            <div class="text-[11px] text-zinc-400">${c.label}</div>
+            <div class="mt-1 flex items-baseline justify-between">
+              <span class="text-lg font-semibold font-mono text-white">${c.val}</span>
+              ${dHtml}
+            </div>
+          </div>`;
+      }).join('');
+
+      const overlayKeys = Object.keys(files).filter(k => k.endsWith('_overlay'));
+      const overlaysHtml = overlayKeys.length ? overlayKeys.map(key => {
+        const pid = key.replace('_overlay', '');
+        const url = `/api/file/${encodeURIComponent(hiveId)}/${encodeURIComponent(rec.id)}/${encodeURIComponent(files[key])}?max_side=1600`;
+        const origUrl = files[pid] ? `/api/file/${encodeURIComponent(hiveId)}/${encodeURIComponent(rec.id)}/${encodeURIComponent(files[pid])}?max_side=1600` : null;
+        const cap = pid === 'board'
+          ? 'Green circle: SAM 3.1 mite · Blue circle: Muse Spark vote · Red cross: rejected by size/redness/oval check'
+          : 'SAM 3.1 comb & bee masks + Muse Spark tile classification';
+        return `
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs font-mono">
+              <span class="text-zinc-300">${pid}_overlay</span>
+              ${origUrl ? `<button onclick="openLightbox('${origUrl}')" class="text-zinc-400 hover:text-white underline">raw image</button>` : ''}
+            </div>
+            <img src="${url}" onclick="openLightbox('${url}')" class="w-full rounded border border-[#232730] cursor-zoom-in" />
+            <p class="text-[11px] text-zinc-500">${cap}</p>
+          </div>
+        `;
+      }).join('') : `<div class="p-6 rounded bg-[#090a0d] border border-[#232730] text-xs text-zinc-500 font-mono text-center">No image overlay attached to this record.</div>`;
+
+      const claimsHtml = (rec.claims || []).map(c => {
+        const tag = c.verdict === 'verified'
+          ? '<span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono text-[10px]">VERIFIED</span>'
+          : c.verdict === 'rejected'
+          ? '<span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-800 font-mono text-[10px]">REJECTED</span>'
+          : '<span class="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono text-[10px]">UNVERIFIABLE</span>';
+        return `
+          <div class="p-2.5 rounded bg-[#090a0d] border border-[#232730] text-xs space-y-1">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-medium text-zinc-200"><code class="font-mono text-amber-500 mr-1">${c.id}</code> ${c.statement}</span>
+              ${tag}
+            </div>
+            <div class="text-[11px] font-mono text-zinc-400">${c.metric} ${c.op} ${c.value} → ${c.reason}</div>
+          </div>
+        `;
+      }).join('');
+
+      let reportHtml = '<div class="text-xs text-zinc-500 font-mono">Measured without the Muse Spark agent.</div>';
+      if (report) {
+        const findings = (report.findings || []).map(f =>
+          `<li class="text-xs text-zinc-200 leading-relaxed flex items-start gap-2">
+            <span class="font-mono text-emerald-400 text-[11px] shrink-0">[verified]</span>
+            <span>${f.text} <code class="px-1 py-0.5 rounded bg-zinc-800 text-amber-400 font-mono text-[10px]">${(f.claim_ids || []).join(', ')}</code></span>
+          </li>`
+        ).join('');
+        const actions = (report.actions || []).map(a =>
+          `<li class="text-xs text-zinc-300"><span class="font-mono text-[10px] uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 mr-1.5">${a.urgency}</span><b class="text-white">${a.action}</b> — <span class="text-zinc-400">${a.reason}</span></li>`
+        ).join('');
+        const dropped = (report.discarded_findings || []).length ? `
+          <div class="mt-3 p-3 rounded bg-rose-950/20 border border-rose-900/40 text-xs">
+            <div class="font-mono text-[11px] text-rose-400 mb-1">Dropped findings (no verified claim citation):</div>
+            ${report.discarded_findings.map(f => `<div class="line-through text-zinc-500">• ${f.text}</div>`).join('')}
+          </div>` : '';
+
+        reportHtml = `
+          <div class="space-y-3">
+            <p class="text-xs text-zinc-200 leading-relaxed bg-[#090a0d] p-3 rounded border border-[#232730]">${report.summary || ''}</p>
+            ${findings ? `<div><div class="text-[11px] font-mono uppercase text-zinc-400 mb-1.5">Verified Findings</div><ul class="space-y-1.5">${findings}</ul></div>` : ''}
+            ${actions ? `<div><div class="text-[11px] font-mono uppercase text-zinc-400 mb-1.5">Actions</div><ul class="space-y-1.5">${actions}</ul></div>` : ''}
+            ${dropped}
+          </div>
+        `;
+      }
+
+      container.innerHTML = `
+        <div class="panel rounded-md p-5 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#232730] pb-3">
+            <div class="flex flex-wrap items-center gap-2.5">
+              <span class="text-sm font-semibold font-mono text-white">${rec.date || ''}</span>
+              ${STATUS_BADGE[status.overall] || STATUS_BADGE.unknown}
+              <span class="text-zinc-700">|</span>
+              ${levelPills}
+            </div>
+            <button onclick='downloadInspectionJson(${JSON.stringify(rec).replace(/'/g, "&#39;")})'
+              class="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs text-zinc-300 font-mono transition">
+              Download JSON
+            </button>
+          </div>
+
+          ${flagsHtml ? `<div class="space-y-1.5">${flagsHtml}</div>` : ''}
+
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-3">${kpiCards}</div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-1">
+            <div class="lg:col-span-7 space-y-3">
+              ${overlaysHtml}
+              <div class="flex flex-wrap gap-1.5 pt-1 font-mono">
+                <span class="px-2 py-0.5 rounded text-[10px]" style="background:rgb(245,190,40);color:#000">Capped honey</span>
+                <span class="px-2 py-0.5 rounded text-[10px]" style="background:rgb(170,110,60);color:#fff">Capped brood</span>
+                <span class="px-2 py-0.5 rounded text-[10px]" style="background:rgb(250,250,250);color:#000">Open brood</span>
+                <span class="px-2 py-0.5 rounded text-[10px]" style="background:rgb(255,120,0);color:#fff">Pollen</span>
+                <span class="px-2 py-0.5 rounded text-[10px]" style="background:rgb(60,60,60);color:#fff">Bees</span>
+                <span class="px-2 py-0.5 rounded text-[10px]" style="background:rgb(90,170,230);color:#000">Empty / nectar</span>
+              </div>
+            </div>
+
+            <div class="lg:col-span-5 space-y-4">
+              <div>
+                <h5 class="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Muse Spark Report</h5>
+                ${reportHtml}
+              </div>
+              ${claimsHtml ? `
+                <div>
+                  <h5 class="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Hypotheses vs Measurements</h5>
+                  <div class="space-y-1.5">${claimsHtml}</div>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function downloadInspectionJson(rec) {
+      const blob = new Blob([JSON.stringify(rec, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `inspection_${rec.id || rec.date}.json`;
+      a.click();
+    }
+
+    async function loadHiveDetails(hiveId) {
+      const res = await fetch(`/api/hive/${encodeURIComponent(hiveId)}`);
+      CURRENT_HIVE_DATA = await res.json();
+
+      const hiveMeta = STATE.hives.find(h => h.id === hiveId);
+      document.getElementById('hist-hive-title').textContent = `${hiveMeta ? hiveMeta.name : hiveId} — Longitudinal History`;
+      document.getElementById('btn-export-zip').href = `/api/export/${encodeURIComponent(hiveId)}.zip`;
+
+      const insps = [...(CURRENT_HIVE_DATA.inspections || [])].reverse();
+      const sel = document.getElementById('hist-inspection-select');
+      sel.innerHTML = insps.map(i =>
+        `<option value="${i.id}">${i.date} · ${(i.status?.overall || 'unknown').toUpperCase()} (${i.metrics?.mites_per_day ?? '—'} mites/d)</option>`
+      ).join('');
+
+      renderTrendCharts(CURRENT_HIVE_DATA.metrics_rows || []);
+      renderSelectedHistoryInspection();
+    }
+
+    function renderSelectedHistoryInspection() {
+      if (!CURRENT_HIVE_DATA) return;
+      const pick = document.getElementById('hist-inspection-select').value;
+      const rec = (CURRENT_HIVE_DATA.inspections || []).find(i => i.id === pick) ||
+                  (CURRENT_HIVE_DATA.inspections || [])[CURRENT_HIVE_DATA.inspections.length - 1];
+      renderInspectionCard(CURRENT_HIVE_ID, rec, 'history-inspection-detail');
+    }
+
+    function renderTrendCharts(rows) {
+      const labels = rows.map(r => r.date);
+      const specs = [
+        { id: 'chart-mites', key: 'mites_per_day', color: '#f43f5e' },
+        { id: 'chart-honey', key: 'honey_kg_hive_est', color: '#d97706' },
+        { id: 'chart-brood', key: 'brood_total_pct', color: '#10b981' },
+        { id: 'chart-stores', key: 'stores_weeks', color: '#38bdf8' },
+      ];
+
+      specs.forEach(s => {
+        if (CHARTS[s.id]) CHARTS[s.id].destroy();
+        const ctx = document.getElementById(s.id).getContext('2d');
+        CHARTS[s.id] = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              data: rows.map(r => r[s.key] ?? null),
+              borderColor: s.color,
+              backgroundColor: 'transparent',
+              tension: 0.2,
+              pointRadius: 3,
+              borderWidth: 1.75,
+            }]
+          },
+          options: {
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: '#71717a', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#181b22' } },
+              y: { ticks: { color: '#71717a', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#181b22' } }
+            }
+          }
+        });
+      });
+    }
+
+    function renderBenchmark() {
+      const b = STATE?.benchmark;
+      const kpiEl = document.getElementById('bench-kpis');
+      const tbody = document.getElementById('bench-table-body');
+
+      const s = b?.summary || { images: '—', experts_total: null, sam_precision: '—', sam_recall: '—', sam_f1: '—', sam_mae: '—', cv_mae: '—' };
+
+      const cards = [
+        { label: 'Boards (held-out)', val: s.images, sub: s.experts_total ? s.experts_total + ' expert mites' : 'no run yet' },
+        { label: 'Precision', val: s.sam_precision, sub: 'Zero-shot SAM 3.1 + Muse' },
+        { label: 'Recall', val: s.sam_recall, sub: '600px grid + 300px refine' },
+        { label: 'F1 (box match)', val: s.sam_f1, sub: 'vs ~0.10 classic CV' },
+        { label: 'Count MAE / board', val: `${s.sam_mae}`, sub: `Classic CV MAE: ${s.cv_mae}` },
+      ];
+      kpiEl.innerHTML = cards.map(c => `
+        <div class="panel rounded-md p-3.5 tabular">
+          <div class="text-[11px] text-zinc-400">${c.label}</div>
+          <div class="text-xl font-semibold font-mono text-white mt-1">${c.val}</div>
+          <div class="text-[10px] font-mono text-zinc-500 mt-0.5">${c.sub}</div>
+        </div>
+      `).join('');
+
+      const rows = b?.images || [];
+      tbody.innerHTML = rows.length ? rows.map(r => `
+        <tr class="hover:bg-zinc-900/50">
+          <td class="py-2 px-3 text-zinc-200">${r.image}</td>
+          <td class="py-2 px-3">${r.experts}</td>
+          <td class="py-2 px-3 text-amber-400 font-semibold">${r.sam ?? '—'}</td>
+          <td class="py-2 px-3">${r.muse_votes_kept ?? 0}</td>
+          <td class="py-2 px-3 text-zinc-500">${r.sam_rejected ?? 0}</td>
+          <td class="py-2 px-3 text-zinc-500">${r.classic_cv}</td>
+          <td class="py-2 px-3">${r.sam_precision ?? '—'}</td>
+          <td class="py-2 px-3">${r.sam_recall ?? '—'}</td>
+          <td class="py-2 px-3 text-emerald-400">${r.sam_f1 ?? '—'}</td>
+        </tr>
+      `).join('') : `<tr><td colspan="9" class="py-4 px-3 text-zinc-500 text-center">Held-out summary metrics displayed above. No benchmark run on disk yet. Click "Run Evaluation".</td></tr>`;
+
+      if (CHARTS['chart-bench']) CHARTS['chart-bench'].destroy();
+      const ctx = document.getElementById('chart-bench').getContext('2d');
+      const chartRows = rows;
+      CHARTS['chart-bench'] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: chartRows.map(r => r.image),
+          datasets: [
+            { label: 'Experts (Ground Truth)', data: chartRows.map(r => r.experts), backgroundColor: '#52525b' },
+            { label: 'HiveLens (SAM 3.1 + Muse Spark)', data: chartRows.map(r => r.sam), backgroundColor: '#d97706' }
+          ]
+        },
+        options: {
+          plugins: { legend: { labels: { color: '#a1a1aa', font: { family: 'JetBrains Mono', size: 11 } } } },
+          scales: {
+            x: { ticks: { color: '#71717a', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#181b22' } },
+            y: { ticks: { color: '#71717a', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#181b22' } }
+          }
+        }
+      });
+    }
+
+    async function runBenchmark() {
+      const n_boards = parseInt(document.getElementById('bench-n').value || '12', 10);
+      const res = await fetch('/api/benchmark', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ n_boards, skip: 8, use_muse: true })
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+      const es = new EventSource(`/api/jobs/${data.job_id}/stream`);
+      es.onmessage = async (msg) => {
+        const ev = JSON.parse(msg.data);
+        if (ev.type === 'done') {
+          es.close();
+          await loadState(true);
+          renderBenchmark();
+        } else if (ev.type === 'error') {
+          es.close();
+          alert(ev.error);
+        }
+      };
+    }
+
+    loadState(false);
+  </script>
+</body>
+</html>

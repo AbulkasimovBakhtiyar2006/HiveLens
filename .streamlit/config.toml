@@ -1,0 +1,10 @@
+[server]
+# only this computer can open the app; nothing is exposed to the local network
+address = "127.0.0.1"
+port = 8501
+headless = true
+maxUploadSize = 200
+
+[browser]
+gatherUsageStats = false
+serverAddress = "127.0.0.1"
