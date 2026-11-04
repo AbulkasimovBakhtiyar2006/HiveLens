@@ -590,3 +590,33 @@
 .drift-advice {
   margin-top: 10px;
 }
+
+/* ── Farm location maps ─────────────────────────────────────────────── */
+.map-slot.world {
+  padding: 0 var(--pad) 4px;
+}
+.map-slot.world .farm-map-canvas {
+  height: 320px;
+}
+.map-slot.farm .farm-map-canvas {
+  height: 190px;
+}
+.farm-map-canvas {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  /* Keep Leaflet's controls under the sticky top bar and dialogs. */
+  z-index: 0;
+  isolation: isolate;
+}
+/* Quieter map colours so status pins stand out; pins sit in another pane and keep full colour. */
+.farm-map-canvas .leaflet-tile-pane {
+  filter: saturate(0.35) brightness(1.04) contrast(0.92);
+}
+.farm-map-canvas .leaflet-control-attribution {
+  font-size: 10px;
+}
+.map-offline {
+  padding: 12px 0;
+}

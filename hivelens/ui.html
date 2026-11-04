@@ -9,9 +9,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&display=swap" />
+  <!-- Leaflet 1.9.4 (BSD-2) for the farm location maps; the rest of the app works without it. -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
   <link rel="stylesheet" href="/static/app.css" />
   <link rel="stylesheet" href="/static/farm.css" />
   <link rel="stylesheet" href="/static/account.css" />
+  <link rel="stylesheet" href="/static/tour.css" />
   <script>
     // Select the comparison version before styles paint. Direct links take precedence.
     var palette = new URLSearchParams(location.search).get("palette");
@@ -30,6 +34,7 @@
   <script src="/static/yard.js" defer></script>
   <script src="/static/farm.js" defer></script>
   <script src="/static/account.js" defer></script>
+  <script src="/static/tour.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -152,6 +157,8 @@
 
           <div id="attention" class="attention" hidden></div>
 
+          <div id="farm-conditions"></div>
+
           <div class="panel" id="hives-panel">
             <div class="hive-list-head">
               <div class="hive-list-title"><h2>Hives</h2><span id="hive-result-count" class="hint" role="status"></span><button id="clear-hive-filters" class="link-btn" type="button" hidden>Clear filters</button></div>
@@ -195,8 +202,6 @@
           </div>
 
           <div id="farm-maps" class="farm-maps"></div>
-
-          <div id="farm-conditions"></div>
         </section>
 
         <!-- New inspection -->
@@ -205,6 +210,7 @@
             <div>
               <h1 id="inspect-title">New inspection</h1>
               <p class="muted">Add a photo of the sticky board, frame photos, or both. HiveLens counts mites and reads the comb.</p>
+              <button type="button" class="link-btn tour-replay" data-tour="own">Show me how</button>
             </div>
           </div>
 
@@ -361,6 +367,7 @@
             <div>
               <h1 id="history-title">Hive records</h1>
               <p class="muted">Every inspection of a hive, with photos, evidence and the report.</p>
+              <button type="button" class="link-btn tour-replay" data-tour="explore">Show me around</button>
             </div>
             <div class="page-actions">
               <select id="history-hive" aria-label="Hive"></select>

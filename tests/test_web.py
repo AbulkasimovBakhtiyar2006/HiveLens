@@ -40,7 +40,8 @@ def web(tmp_path, monkeypatch):
 
 def test_local_assets_and_allowlist(web):
     for path, content_type in [('/', 'text/html'), ('/static/app.css', 'text/css'),
-                               ('/static/app.js', 'text/javascript'), ('/static/mark.svg', 'image/svg+xml')]:
+                               ('/static/app.js', 'text/javascript'), ('/static/mark.svg', 'image/svg+xml'),
+                               ('/static/tour.js', 'text/javascript'), ('/static/tour.css', 'text/css')]:
         status, headers, body = web(path)
         assert status == 200 and content_type in headers['Content-Type']
         assert len(body) == int(headers['Content-Length'])
@@ -244,3 +245,13 @@ def test_farm_without_location_has_no_weather(web):
     assert status == 409 and 'location' in json.loads(raw)['error']
     assert web('/api/farms', {'name': 'X', 'breed': 'unicorn'})[0] == 400
     assert web('/api/farm_update', {'farm_id': 'nowhere', 'name': 'X'})[0] == 404
+
+
+def test_demo_apiary_has_located_farms_on_four_continents(web):
+    """The farm map needs coordinates; the seed sets them without any geocoding call."""
+    farms = json.loads(web('/api/seed_apiary', {})[2])['apiary']['farms']
+    located = {f['name']: (f['country_code'], round(f['lat']), round(f['lon'])) for f in farms if f.get('lat') is not None}
+    assert {c for c, _, _ in located.values()} >= {'KZ', 'US', 'SI', 'JP'}
+    talgar = [f for f in farms if f['name'].startswith('Talgar')]
+    assert len({(f['lat'], f['lon']) for f in talgar}) == 2
+    assert all(f['hive_count'] >= 2 for f in farms if f.get('lat') is not None)

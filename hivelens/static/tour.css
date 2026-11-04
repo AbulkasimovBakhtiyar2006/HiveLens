@@ -1,0 +1,53 @@
+/* Guided tour: a spotlight on one element and a small card next to it. */
+.tour-spot {
+  position: fixed;
+  z-index: 80;
+  border-radius: 12px;
+  box-shadow: 0 0 0 2px var(--accent-text), 0 0 0 9999px rgba(20, 26, 22, 0.42);
+  pointer-events: none;
+  transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s;
+}
+.tour-card {
+  position: fixed;
+  z-index: 81;
+  width: min(340px, calc(100vw - 16px));
+  padding: 16px 18px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.tour-count {
+  margin-bottom: 4px;
+  font-size: var(--type-xs, 0.8rem);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.tour-card h3 {
+  margin-bottom: 6px;
+  font-size: var(--type-section, 1.05rem);
+}
+.tour-card p#tour-text {
+  font-size: var(--type-sm, 0.9rem);
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+}
+.tour-actions span {
+  display: flex;
+  gap: 8px;
+}
+.tour-replay {
+  margin-top: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot {
+    transition: none;
+  }
+}

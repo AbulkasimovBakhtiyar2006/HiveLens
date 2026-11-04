@@ -289,11 +289,57 @@ def seed_demo_apiary() -> dict:
             (4.1, 44, 29, 8, 8.8, "Responding well to treatment"),
             (2.2, 47, 32, 9, 9.4, "Stabilized below watch threshold"),
         ]),
+        # Farms on other continents, so the farm map and the weather have somewhere to go.
+        ("Hive #09 · Vineyard Row", "Sonoma Valley", [
+            (0.9, 52, 33, 9, 10.4, "Calm colony between the vine rows"),
+            (1.2, 55, 34, 10, 11.1, "Good flow from cover crops"),
+            (1.0, 58, 35, 10, 11.8, "Stores building well"),
+        ]),
+        ("Hive #10 · Oak Edge", "Sonoma Valley", [
+            (2.6, 45, 31, 8, 9.0, "Normal mite drop"),
+            (4.4, 43, 30, 7, 8.6, "Mite drop crossed watch threshold"),
+            (6.1, 41, 28, 7, 8.1, "Rising mites, plan a treatment"),
+        ]),
+        ("Hive #11 · Carniolan Line", "Ljubljana Hills", [
+            (0.6, 50, 36, 11, 10.8, "Gentle Carniolan colony, strong brood"),
+            (0.8, 53, 37, 11, 11.4, "Lime tree flow"),
+            (0.7, 57, 38, 12, 12.0, "Ready for winter"),
+        ]),
+        ("Hive #12 · Castle Hill", "Ljubljana Hills", [
+            (5.2, 40, 29, 7, 8.0, "Mite drop above watch level"),
+            (3.6, 42, 30, 8, 8.5, "Oxalic acid treatment working"),
+            (1.9, 45, 32, 9, 9.1, "Back below the watch threshold"),
+        ]),
+        ("Hive #13 · Apple Orchard", "Nagano Highlands", [
+            (1.4, 47, 33, 9, 9.6, "Healthy colony near the apple trees"),
+            (1.7, 49, 34, 9, 10.0, "Steady foraging"),
+            (1.5, 51, 35, 10, 10.6, "Normal mite drop"),
+        ]),
+        ("Hive #14 · Mountain Pass", "Nagano Highlands", [
+            (6.8, 38, 27, 6, 7.4, "High mite drop for the season"),
+            (9.4, 35, 25, 6, 6.9, "Mites rising quickly"),
+            (12.3, 31, 22, 5, 6.2, "Critical: 12.3 mites a day, treat now"),
+        ]),
     ]
 
+    def demo_farm(name: str, location: str, lat: float, lon: float, place: str, country: str, breed: str) -> dict:
+        """A demo farm with fixed coordinates, so seeding needs no geocoding call."""
+        farm = store.ensure_farm(name, location)
+        if farm.get("lat") is None:
+            farm = store.update_farm(farm["id"], lat=lat, lon=lon, place=place, country_code=country, breed=breed or None)
+        return farm
+
     farm_for = {
-        "Talgar Mountain Sector A": store.ensure_farm("Talgar North", "Talgar Mountain, sector A"),
-        "Talgar Mountain Sector B": store.ensure_farm("Talgar South", "Talgar Mountain, sector B"),
+        "Talgar Mountain Sector A": demo_farm("Talgar North", "Talgar Mountain, sector A", 43.3024, 77.2381,
+                                              "Talghar, Almaty Region, Kazakhstan", "KZ", ""),
+        "Talgar Mountain Sector B": demo_farm("Talgar South", "Talgar Mountain, sector B", 43.2700, 77.2650,
+                                              "Talgar foothills, Almaty Region, Kazakhstan", "KZ", ""),
+        "Sonoma Valley": demo_farm("Sonoma Valley", "Sonoma, California", 38.2919, -122.4580,
+                                   "Sonoma, California, United States", "US", "ligustica"),
+        "Ljubljana Hills": demo_farm("Ljubljana Hills", "Ljubljana, Slovenia", 46.0569, 14.5058,
+                                     "Ljubljana, Slovenia", "SI", "carnica"),
+        "Nagano Highlands": demo_farm("Nagano Highlands", "Nagano, Japan", 36.6513, 138.1810,
+                                      "Nagano, Japan", "JP", "ligustica"),
     }
     existing = {h["name"]: h for h in store.list_hives()}
     created = 0
@@ -601,7 +647,8 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                       "farm.css": "text/css; charset=utf-8", "farm.js": "text/javascript; charset=utf-8",
                       "account.css": "text/css; charset=utf-8", "account.js": "text/javascript; charset=utf-8",
                       "camera.js": "text/javascript; charset=utf-8", "comb-demo.mp4": "video/mp4",
-                      "yard.js": "text/javascript; charset=utf-8"}
+                      "yard.js": "text/javascript; charset=utf-8",
+                      "tour.css": "text/css; charset=utf-8", "tour.js": "text/javascript; charset=utf-8"}
             name = path.removeprefix("/static/")
             # Weather icons (Meteocons, MIT): only plain names inside static/weather/.
             if name.startswith("weather/") and _safe_part(name.removeprefix("weather/")) and name.endswith(".svg") \

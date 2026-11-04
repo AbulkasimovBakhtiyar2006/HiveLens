@@ -227,6 +227,7 @@ function farmFacts(farm, data) {
   const elev = data?.elevation_m ?? farm.elevation_m;
   return `<dl class="cond-facts">
     <div class="cond-fact"><dt>Place</dt><dd>${esc(farm.place || farm.location || "Not set")}${coords ? `<p>${esc(coords)}${elev != null ? `, ${num(elev, 0)} m above sea level` : ""}</p>` : ""}</dd></div>
+    ${farm.lat != null ? `<div class="map-slot farm" data-map-slot="farm:${esc(farm.id)}" aria-label="Map of ${esc(farm.name)}"></div>` : ""}
     ${breedBlock(farm)}
   </dl>`;
 }
@@ -328,13 +329,72 @@ function renderFarmConditions() {
   if (!el || !state) return;
   if (selectedFarm === "all") {
     const real = farms().filter((f) => f.id);
+    const unplaced = real.filter((f) => f.lat == null).map((f) => f.name);
     el.innerHTML = real.length
-      ? `<section class="panel"><header class="panel-head"><div class="panel-title-group"><h2>Weather on the farms</h2><span class="sub-text">Select a farm for the hourly forecast.</span></div></header><div class="wcards">${real.map(farmWeatherCard).join("")}</div></section>`
+      ? `<section class="panel"><header class="panel-head"><div class="panel-title-group"><h2>Your farms</h2><span class="sub-text">Where they are and the weather there now. Select a pin or a card to open a farm.${
+          unplaced.length ? ` ${esc(unplaced.join(", "))} ${unplaced.length === 1 ? "has" : "have"} no location yet.` : ""
+        }</span></div></header>
+        ${real.some((f) => f.lat != null) ? '<div class="map-slot world" data-map-slot="world" aria-label="World map of your farms"></div>' : ""}
+        <div class="wcards">${real.map(farmWeatherCard).join("")}</div></section>`
       : "";
+    mountFarmMaps(el);
     return;
   }
   const farm = farmByKey(selectedFarm);
   el.innerHTML = farm?.id ? farmConditionsPanel(farm) : "";
+  mountFarmMaps(el);
+}
+
+/* ── Farm location maps (Leaflet with OpenStreetMap tiles, no API key) ── */
+// Each map is built once and its element is moved back into the redrawn panel, so refreshing
+// the weather never reloads tiles or loses the user's zoom.
+const farmMaps = {};
+const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const TILE_CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+
+function statusColour(status) {
+  const name = { act: "--act", watch: "--watch", good: "--good" }[status];
+  return (name && getComputedStyle(document.documentElement).getPropertyValue(name).trim()) || "#9aa5ae";
+}
+
+function mountFarmMaps(root) {
+  root.querySelectorAll("[data-map-slot]").forEach((slot) => {
+    if (typeof L === "undefined") {
+      slot.innerHTML = '<p class="hint map-offline">The map needs an internet connection.</p>';
+      return;
+    }
+    const key = slot.dataset.mapSlot;
+    const world = key === "world";
+    const shown = world ? farms().filter((f) => f.id && f.lat != null) : [farmByKey(key.slice(5))].filter((f) => f?.lat != null);
+    let entry = farmMaps[key];
+    if (!entry) {
+      const el = document.createElement("div");
+      el.className = "farm-map-canvas";
+      const map = L.map(el, { scrollWheelZoom: false, worldCopyJump: true, zoomSnap: 0.5 });
+      L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_CREDIT }).addTo(map);
+      entry = farmMaps[key] = { el, map, pins: L.layerGroup().addTo(map), sig: "" };
+    }
+    slot.appendChild(entry.el);
+    // Redraw pins only when farms, places or statuses change; keep the view otherwise.
+    const sig = JSON.stringify(shown.map((f) => [f.id, f.lat, f.lon, f.overall, f.name, document.documentElement.dataset.palette]));
+    requestAnimationFrame(() => {
+      entry.map.invalidateSize();
+      if (sig === entry.sig) return;
+      entry.sig = sig;
+      entry.pins.clearLayers();
+      for (const f of shown) {
+        const pin = L.circleMarker([f.lat, f.lon], {
+          radius: world ? 8 : 10, weight: 2.5, color: "#ffffff", fillColor: statusColour(f.overall), fillOpacity: 1,
+        });
+        pin.bindTooltip(`${esc(f.name)}${f.hive_count != null ? `, ${f.hive_count} hive${f.hive_count === 1 ? "" : "s"}` : ""}`, { direction: "top", offset: [0, -8] });
+        if (world) pin.on("click", () => selectFarm(farmKey(f.id)));
+        pin.addTo(entry.pins);
+      }
+      if (!world) entry.map.setView([shown[0].lat, shown[0].lon], 11);
+      else if (shown.length === 1) entry.map.setView([shown[0].lat, shown[0].lon], 5);
+      else entry.map.fitBounds(L.latLngBounds(shown.map((f) => [f.lat, f.lon])), { padding: [36, 36], maxZoom: 6 });
+    });
+  });
 }
 
 document.addEventListener("click", (event) => {
