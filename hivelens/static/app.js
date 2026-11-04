@@ -291,10 +291,16 @@ async function renderWelcome() {
   const candidates = hives().filter((h) => !isSynthetic(h) && (h.inspection_count > 0 || h.sample_inspection_count > 0));
   welcomeLoading = true;
   try {
+    // Prefer a sticky-board analysis (the mite count is the core of HiveLens), newest first;
+    // otherwise the newest saved photo analysis with a marked-up image.
+    const usable = (r) => !r.synthetic && r.report && Object.keys(r.files || {}).some((key) => key.endsWith("_overlay"));
+    const found = [];
     for (const hive of candidates) {
       const data = await api(`/api/hive/${encodeURIComponent(hive.id)}`);
-      const rec = [...data.inspections].reverse().find((r) => !r.synthetic && r.report && Object.keys(r.files || {}).some((key) => key.endsWith("_overlay")));
-      if (!rec) continue;
+      for (const r of [...data.inspections].reverse()) if (usable(r)) found.push({ hive, rec: r });
+    }
+    const pick = found.find((x) => x.rec.files.board_overlay) || found[0];
+    for (const { hive, rec } of pick ? [pick] : []) {
       const files = rec.files;
       const overlay = files.board_overlay ? "board_overlay" : Object.keys(files).find((key) => key.endsWith("_overlay"));
       const original = files[overlay.replace(/_overlay$/, "")];

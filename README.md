@@ -6,7 +6,9 @@
 · [Watch the demo on YouTube](https://www.youtube.com/watch?v=taEsdckX_h4)
 
 No installation or password is needed to explore saved analyses, photographs,
-benchmarks and published study histories. New analyses and shared edits require owner sign-in.
+benchmarks and published study histories, or to start one fixed live sample analysis
+(a public frame photo, limited shared runs). Analyses of your own photos and shared edits
+require owner sign-in.
 
 HiveLens turns sticky-board and comb photographs into an inspection you can audit:
 counts, visible comb composition, marked-up images, checked claims and a saved report.
