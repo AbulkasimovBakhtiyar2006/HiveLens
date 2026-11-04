@@ -423,9 +423,16 @@
 .farm-map.editing .apiary-map-canvas {
   background: var(--accent-soft);
 }
-.map-node.draggable {
+/* Any hive can be dragged; the first move opens layout editing. */
+.map-node {
   cursor: grab;
   touch-action: none;
+  user-select: none;
+}
+.dragging-hive,
+.dragging-hive * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 .map-node.dragging {
   cursor: grabbing;
@@ -457,6 +464,22 @@
 .map-measure.risky text {
   fill: var(--act);
 }
+/* Distances from the hive being dragged. */
+.map-measure.live line {
+  stroke: var(--text);
+  stroke-dasharray: 4 3;
+}
+.map-measure.live text {
+  fill: var(--text);
+}
+.map-measure.live.risky line,
+.map-measure.live.risky text {
+  stroke: var(--act);
+}
+.map-measure.live.risky text {
+  stroke: var(--accent-soft);
+  fill: var(--act);
+}
 .key-line.measure {
   border-top: 1px dashed var(--text-2);
 }
@@ -465,7 +488,8 @@
   align-items: flex-end;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 14px var(--pad) 0;
+  padding: 14px var(--pad) 16px;
+  border-top: 1px solid var(--border);
 }
 .arrange strong {
   align-self: center;
@@ -530,4 +554,39 @@
   border: 0;
   opacity: 0;
   cursor: pointer;
+}
+
+/* Small tiles on big yards. */
+.map-value.compact {
+  font-size: 12px;
+}
+.map-label.compact {
+  font-size: 10px;
+}
+
+/* What the lines mean, and their distance labels. */
+.map-explain {
+  max-width: 80ch;
+  padding: 10px var(--pad) 0;
+  font-size: 0.86rem;
+  color: var(--text-2);
+}
+.map-dist {
+  fill: var(--act);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  stroke: var(--surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+.map-drift:not(.near) .map-dist {
+  fill: var(--watch);
+}
+.farm-map.editing .map-dist {
+  stroke: var(--accent-soft);
+}
+.drift-advice {
+  margin-top: 10px;
 }

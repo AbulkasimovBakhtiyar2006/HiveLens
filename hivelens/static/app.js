@@ -345,7 +345,10 @@ function fillFarmSelect(select, current) {
 // Actions live in each page's own header, so nothing here repeats a page button.
 function renderTopbar() {
   if (!$("topbar-crumbs")) return;
-  const fact = (text, tone = "") => `<span class="fact${tone ? ` ${tone}` : ""}">${text}</span>`;
+  const fact = (text, tone = "", go = "") =>
+    go
+      ? `<button type="button" class="fact${tone ? ` ${tone}` : ""}" data-fact="${go}">${text}</button>`
+      : `<span class="fact${tone ? ` ${tone}` : ""}">${text}</span>`;
   const farm = selectedFarm === "all" ? null : farmByKey(selectedFarm);
   const hive = state ? hives().find((h) => h.id === selectedHive) : null;
   let crumbs = [VIEWS[view]];
@@ -355,12 +358,12 @@ function renderTopbar() {
     const list = hivesInView();
     const n = (s) => list.filter((h) => h.overall === s).length;
     facts += fact(`${list.length} hive${list.length === 1 ? "" : "s"}`);
-    if (n("act")) facts += fact(`${n("act")} critical`, "act");
-    if (n("watch")) facts += fact(`${n("watch")} to watch`, "watch");
+    if (n("act")) facts += fact(`${n("act")} critical`, "act", "act");
+    if (n("watch")) facts += fact(`${n("watch")} to watch`, "watch", "watch");
     if (!n("act") && !n("watch") && list.length) facts += fact("All normal", "good");
     const now = farm?.id && typeof weatherCache !== "undefined" ? weatherCache[farm.id]?.data?.current : null;
     if (now) {
-      facts += fact(`<img src="/static/weather/${weatherIconName(now)}.svg" width="22" height="22" alt="" />${num(now.temp_c, 0)} °C, ${esc(now.text.toLowerCase())}, wind ${num(now.wind_ms)} m/s`);
+      facts += fact(`<img src="/static/weather/${weatherIconName(now)}.svg" width="22" height="22" alt="" />${num(now.temp_c, 0)} °C, ${esc(now.text.toLowerCase())}, wind ${num(now.wind_ms)} m/s`, "", "weather");
       facts += fact(`Bee flight: ${FLIGHT[now.flight.level].toLowerCase()}`, now.flight.level === "good" ? "good" : now.flight.level === "limited" ? "watch" : "");
     }
   } else if (["history", "inspect"].includes(view) && hive) {
@@ -378,6 +381,7 @@ function renderTopbar() {
 }
 
 function renderOverview() {
+  $("view-overview").classList.toggle("one-farm", selectedFarm !== "all");
   $("page-add-farm").hidden = selectedFarm !== "all";
   $("page-add-hive").hidden = selectedFarm === "all";
   renderTopbar();
@@ -397,7 +401,7 @@ function renderOverview() {
     kpi("Normal", count("good"), "Below 3 mites/day", "good") +
     kpi("Watch", count("watch"), "3–10 mites/day", "watch") +
     kpi("Critical", count("act"), "10+ mites/day", "act") +
-    kpi("Drift exposure", driftRiskCount, "Within 4 m of a critical hive", "watch");
+    kpi("Drift exposure", driftRiskCount, "Within 4 m of a hive with 10+ mites/day", "watch");
 
   const urgent = all.filter((h) => h.overall === "act").sort((a, b) => Number(isSynthetic(a)) - Number(isSynthetic(b)));
   $("attention").hidden = !urgent.length;
@@ -465,7 +469,7 @@ function hiveRow(h) {
       : '<span class="muted">—</span>';
   return `<tr class="${syn ? "" : "measured-row"}">
     <td class="strong"><a href="#history" data-hive="${esc(h.id)}" data-destination="history" style="text-decoration:none">${esc(displayName(h))}</a></td>
-    <td class="muted">${esc(farmName(h.farm_id))}</td>
+    <td class="muted col-farm">${esc(farmName(h.farm_id))}</td>
     <td>${syn ? '<span class="tag demo">Demo data</span>' : '<span class="tag measured">Measured</span>'}</td>
     <td>${badge(s)}</td>
     <td class="num strong">${h.mites_per_day != null ? `${num(h.mites_per_day)} /d` : "—"}</td>
@@ -933,6 +937,25 @@ function compositionBar(m) {
     .join("")}</div></div>`;
 }
 
+// Mite drift around this hive, from the yard map: who it is close to, and how far.
+function driftNote(hiveId) {
+  const links = state?.apiary?.drift_links || [];
+  const byId = Object.fromEntries(hives().map((h) => [h.id, h]));
+  const from = links.filter((l) => l.to_id === hiveId);
+  const to = links.filter((l) => l.from_id === hiveId);
+  if (!from.length && !to.length) return "";
+  const nameOf = (id, fallback) => esc(shortName(byId[id] || { name: fallback }));
+  const list = (items) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0]);
+  const sentences = [];
+  if (from.length) {
+    sentences.push(`This hive stands ${list(from.map((l) => `${esc(l.distance_m)} m from ${nameOf(l.from_id, l.from_name)}, which drops ${num(byId[l.from_id]?.mites_per_day)} mites a day`))}.`);
+  }
+  if (to.length) {
+    sentences.push(`Its mites can spread to ${list(to.map((l) => `${nameOf(l.to_id, l.to_name)} (${esc(l.distance_m)} m)`))}.`);
+  }
+  return `<div class="flag ${to.length ? "act" : ""}">${icon("alert")}<span><strong>Mite drift.</strong> ${sentences.join(" ")} <a href="#overview" data-go="overview">See the yard map</a></span></div>`;
+}
+
 function renderRecord(hiveId, rec, target) {
   const el = $(target);
   if (!rec) {
@@ -1059,12 +1082,13 @@ function renderRecord(hiveId, rec, target) {
     <header class="record-head">
       <div>
         <h2>${esc(dateLabel(rec.date))} ${badge(s)} ${rec.synthetic ? '<span class="tag demo">Demo data</span>' : '<span class="tag measured">Measured</span>'}</h2>
-        <p>${esc(hiveName(hiveId))}${rec.models?.segmentation ? `, ${esc(rec.models.segmentation)} and ${esc(rec.models.reasoning)}` : ""}</p>
+        <p>${esc(hiveName(hiveId))}${rec.models?.segmentation && !rec.synthetic ? `, ${esc(rec.models.segmentation)} and ${esc(rec.models.reasoning)}` : ""}</p>
       </div>
       <button class="btn sm record-download" type="button">${icon("download")}Export JSON</button>
     </header>
     <div class="record-body">
       ${rec.synthetic ? '<div class="alert warn">' + icon("info") + "<p>Demo record. These numbers are simulated to fill the apiary. <b>Hive #7</b> has real measurements from photos.</p></div>" : ""}
+      ${driftNote(hiveId)}
       ${flags}
       ${metrics}
       ${compositionBar(m)}
@@ -1211,6 +1235,16 @@ document.addEventListener("click", (event) => {
   if (target.dataset.hive) {
     event.preventDefault();
     selectHive(target.dataset.hive, target.dataset.destination);
+  }
+  if (target.dataset.fact) {
+    // Top bar facts jump to what they count: the hive table filtered by status, or the forecast.
+    if (target.dataset.fact === "weather") {
+      $("farm-conditions").scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      statusFilter = target.dataset.fact;
+      renderOverview();
+      $("hives-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
   if (target.dataset.filter) {
     statusFilter = target.dataset.filter;

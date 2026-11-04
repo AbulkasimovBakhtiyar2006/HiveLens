@@ -62,3 +62,15 @@ def test_profile_photo_upload_and_remove(web):
     assert web('/api/profile_photo', {'image': 'data:image/png;base64,bm90IGFuIGltYWdl'})[0] == 400
     assert json.loads(web('/api/profile_photo', {'remove': True})[2])['settings']['profile']['photo_version'] == 0
     assert web('/api/profile_photo')[0] == 404
+
+
+def test_only_high_mite_hives_spread_mites(web):
+    """A hive that is critical for low stores, not mites, draws no drift lines."""
+    farm = store.create_farm('Yard')
+    hungry = store.create_hive('Hungry', farm_id=farm['id'])
+    near = store.create_hive('Near', farm_id=farm['id'])
+    store.save_inspection(hungry['id'], {'date': '2026-11-04', 'metrics': {'mites_per_day': 2.4, 'stores_weeks': 2},
+                                         'status': {'overall': 'act'}}, {}, {})
+    spots = [{'hive_id': hungry['id'], 'x_m': 0, 'y_m': 0}, {'hive_id': near['id'], 'x_m': 2, 'y_m': 0}]
+    apiary = json.loads(web('/api/hive_layout', {'farm_id': farm['id'], 'positions': spots})[2])['apiary']
+    assert apiary['drift_links'] == []

@@ -95,13 +95,15 @@
             </div>
           </div>
 
-          <div id="farm-conditions"></div>
-
           <div id="overview-stats" class="kpi-strip" aria-label="Apiary summary"></div>
 
           <div id="attention" class="attention" hidden></div>
 
-          <div class="panel">
+          <div id="farm-maps" class="farm-maps"></div>
+
+          <div id="farm-conditions"></div>
+
+          <div class="panel" id="hives-panel">
             <div class="panel-head">
               <h2>Hives</h2>
               <div class="toolbar">
@@ -125,7 +127,7 @@
                 <thead>
                   <tr>
                     <th>Hive</th>
-                    <th>Farm</th>
+                    <th class="col-farm">Farm</th>
                     <th>Source</th>
                     <th>Status</th>
                     <th class="num">Mites per day</th>
@@ -142,8 +144,6 @@
             </div>
             <div id="hive-empty" class="empty" hidden></div>
           </div>
-
-          <div id="farm-maps" class="farm-maps"></div>
         </section>
 
         <!-- New inspection -->

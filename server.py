@@ -201,7 +201,9 @@ def build_apiary_overview() -> dict:
 
     # Compute Varroa mite drift / epidemiological contagion links between nearby hives
     drift_links = []
-    sources = [n for n in nodes if n["overall"] == "act" or (n["mites_per_day"] or 0) >= config.THRESHOLDS.mites_per_day_high]
+    # Only a high mite drop makes a hive a source: drifting and robbing bees carry mites to
+    # neighbours. A hive that is critical for another reason (low stores) does not spread mites.
+    sources = [n for n in nodes if (n["mites_per_day"] or 0) >= config.THRESHOLDS.mites_per_day_high]
     for src in sources:
         for dst in nodes:
             if src["id"] == dst["id"] or src["farm_id"] != dst["farm_id"]:
@@ -226,7 +228,7 @@ def build_apiary_overview() -> dict:
         "act": sum(1 for n in nodes if n["overall"] == "act"),
         "improving": sum(1 for n in nodes if n["trend"] == "improving"),
         "worsening": sum(1 for n in nodes if n["trend"] == "worsening"),
-        "at_drift_risk": sum(1 for n in nodes if n["drift_risk_from"] and n["overall"] != "act"),
+        "at_drift_risk": sum(1 for n in nodes if n["drift_risk_from"]),
     }
     farm_rows = []
     for f in [*farms, {"id": None, "name": "Unassigned", "location": ""}]:

@@ -41,39 +41,58 @@ function positionOf(key, h) {
 
 /* ── Drawing ─────────────────────────────────────────────────────────── */
 function yardSvg(key, members, links) {
-  const editing = Boolean(yardEdit[key]);
-  const pts = members.map((h) => positionOf(key, h));
-  const margin = editing ? 2.5 : 0;
-  let minX = Math.floor(Math.min(...pts.map((p) => p.x)) - margin);
-  let maxX = Math.ceil(Math.max(...pts.map((p) => p.x)) + margin);
-  let minY = Math.floor(Math.min(...pts.map((p) => p.y)) - margin);
-  let maxY = Math.ceil(Math.max(...pts.map((p) => p.y)) + margin);
-  if (maxX - minX < 4) maxX = minX + 4;
-  if (maxY - minY < (editing ? 3 : 1)) maxY = minY + (editing ? 3 : 1);
+  const ed = yardEdit[key];
+  const editing = Boolean(ed);
+  let minX;
+  let maxX;
+  let minY;
+  let maxY;
+  if (ed?.frozen) {
+    // While a hive is being dragged the yard stays still, so the map does not jump under the pointer.
+    ({ minX, maxX, minY, maxY } = ed.frozen);
+  } else {
+    // The same yard in view and layout mode: the hives plus a small border, so switching modes
+    // never resizes the map. It only grows when a hive is dropped further out.
+    const pts = members.map((h) => positionOf(key, h));
+    const margin = 0.75;
+    minX = Math.floor(Math.min(...pts.map((p) => p.x)) - margin);
+    maxX = Math.ceil(Math.max(...pts.map((p) => p.x)) + margin);
+    minY = Math.floor(Math.min(...pts.map((p) => p.y)) - margin);
+    maxY = Math.ceil(Math.max(...pts.map((p) => p.y)) + margin);
+    if (maxX - minX < 4) maxX = minX + 4;
+    if (maxY - minY < 2) maxY = minY + 2;
+  }
   const spanX = maxX - minX;
   const spanY = maxY - minY;
 
   const W = 720;
   const pad = { l: 84, r: 48, t: 44, b: 64 };
-  const scale = Math.min((W - pad.l - pad.r) / spanX, 90, ((editing ? 520 : 440) - pad.t - pad.b) / spanY);
+  const scale = Math.min((W - pad.l - pad.r) / spanX, 90, (440 - pad.t - pad.b) / spanY);
   const H = Math.round(spanY * scale + pad.t + pad.b);
   const offX = pad.l + (W - pad.l - pad.r - spanX * scale) / 2;
   const sx = (x) => offX + (x - minX) * scale;
   const sy = (y) => pad.t + (y - minY) * scale;
-  const tw = 64;
-  const th = 46;
+  // Tiles shrink with the yard so a big apiary still fits without hives covering each other.
+  const tw = Math.round(Math.min(64, Math.max(34, scale * 0.85)));
+  const th = Math.round(tw * 0.72);
+  const compact = tw < 52;
 
-  const step = spanX > 40 ? 5 : spanX > 14 ? 2 : 1;
+  const step = Math.max(spanX, spanY) > 40 ? 5 : Math.max(spanX, spanY) > 14 ? 2 : 1;
+  // Label metres across the hives' own range; the border around them stays unlabelled.
+  const ptsNow = members.map((h) => positionOf(key, h));
+  const lx = [Math.floor(Math.min(...ptsNow.map((p) => p.x))), Math.ceil(Math.max(...ptsNow.map((p) => p.x)))];
+  const ly = [Math.floor(Math.min(...ptsNow.map((p) => p.y))), Math.ceil(Math.max(...ptsNow.map((p) => p.y)))];
+  const labelled = (v, [lo, hi]) => v >= lo && v <= hi;
   let grid = "";
-  for (let gx = minX; gx <= maxX; gx += step) {
+  for (let gx = Math.ceil(minX / step) * step; gx <= maxX; gx += step) {
     const px = sx(gx).toFixed(1);
     grid += `<line class="map-grid" x1="${px}" y1="${pad.t - 26}" x2="${px}" y2="${H - pad.b + 30}"/>`;
-    grid += `<text class="map-axis" x="${px}" y="${H - 12}" text-anchor="middle">${gx} m</text>`;
+    if (labelled(gx, lx)) grid += `<text class="map-axis" x="${px}" y="${H - 12}" text-anchor="middle">${gx} m</text>`;
   }
-  for (let gy = minY; gy <= maxY; gy += step) {
+  for (let gy = Math.ceil(minY / step) * step; gy <= maxY; gy += step) {
     const py = sy(gy).toFixed(1);
     grid += `<line class="map-grid" x1="${(offX - tw / 2 - 8).toFixed(1)}" y1="${py}" x2="${(offX + spanX * scale + 34).toFixed(1)}" y2="${py}"/>`;
-    grid += `<text class="map-axis" x="${(offX - tw / 2 - 14).toFixed(1)}" y="${(sy(gy) + 3.5).toFixed(1)}" text-anchor="end">${gy} m</text>`;
+    if (labelled(gy, ly)) grid += `<text class="map-axis" x="${(offX - tw / 2 - 14).toFixed(1)}" y="${(sy(gy) + 3.5).toFixed(1)}" text-anchor="end">${gy} m</text>`;
   }
 
   // Stop a line at the tile edge (tiles are rectangles, so the gap depends on the direction).
@@ -93,37 +112,41 @@ function yardSvg(key, members, links) {
     return { x1: x1 + ux * g, y1: y1 + uy * g, x2: x2 - ux * g, y2: y2 - uy * g, mx: (x1 + x2) / 2, my: (y1 + y2) / 2, long: len > g * 2 };
   };
 
+  // One rule in both modes, the same as the server's: a hive dropping 10+ mites a day is a
+  // source, and every hive within 4 m of it is joined to it (solid under 2.8 m). In layout mode
+  // the lines follow the hives as they move; the hive being dragged also shows grey distances.
+  const high = state?.thresholds?.mites_per_day_high ?? 10;
+  const isSource = (h) => (h.mites_per_day ?? 0) >= high;
+  const labelAt = (s, text, cls) => {
+    const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1) || 1;
+    if (len < 40) return ""; // too short to label without covering a hive; the tooltip has it
+    let nx = -(s.y2 - s.y1) / len;
+    let ny = (s.x2 - s.x1) / len;
+    if (ny > 0 || (ny === 0 && nx > 0)) [nx, ny] = [-nx, -ny]; // label above the line
+    return `<text class="${cls}" x="${((s.x1 + s.x2) / 2 + nx * 13).toFixed(1)}" y="${((s.y1 + s.y2) / 2 + ny * 13 + 3.5).toFixed(1)}" text-anchor="middle">${text}</text>`;
+  };
   let edges = "";
-  if (editing) {
-    // Measuring lines between every pair closer than MEASURE_M.
-    for (let i = 0; i < members.length; i++) {
-      for (let j = i + 1; j < members.length; j++) {
-        const a = members[i];
-        const b = members[j];
-        const pa = positionOf(key, a);
-        const pb = positionOf(key, b);
-        const d = Math.hypot(pa.x - pb.x, pa.y - pb.y);
-        if (d > MEASURE_M) continue;
-        const risky = d <= DRIFT_M && (a.overall === "act" || b.overall === "act");
-        const s = segment(a, b);
-        if (!s.long) continue;
-        edges += `<g class="map-measure${risky ? " risky" : ""}"><line x1="${s.x1.toFixed(1)}" y1="${s.y1.toFixed(1)}" x2="${s.x2.toFixed(1)}" y2="${s.y2.toFixed(1)}"/>
-          <text x="${s.mx.toFixed(1)}" y="${(s.my - 5).toFixed(1)}" text-anchor="middle">${num(d)} m</text></g>`;
+  for (let i = 0; i < members.length; i++) {
+    for (let j = i + 1; j < members.length; j++) {
+      const a = members[i];
+      const b = members[j];
+      const pa = positionOf(key, a);
+      const pb = positionOf(key, b);
+      const d = Math.hypot(pa.x - pb.x, pa.y - pb.y);
+      const drift = d <= DRIFT_M && (isSource(a) || isSource(b));
+      const live = editing && ed.dragging && (a.id === ed.dragging || b.id === ed.dragging) && d <= MEASURE_M;
+      if (!drift && !live) continue;
+      const s = segment(a, b);
+      if (!s.long) continue;
+      const xy = `x1="${s.x1.toFixed(1)}" y1="${s.y1.toFixed(1)}" x2="${s.x2.toFixed(1)}" y2="${s.y2.toFixed(1)}"`;
+      if (drift) {
+        const [src, other] = isSource(a) ? [a, b] : [b, a];
+        const why = `${shortName(other)} is ${num(d)} m from ${shortName(src)}, which drops ${num(src.mites_per_day)} mites a day. Drifting bees can carry mites across.`;
+        edges += `<g class="map-drift${d <= 2.8 ? " near" : ""}"><line class="map-link${d <= 2.8 ? " high" : ""}" ${xy}><title>${esc(why)}</title></line>${labelAt(s, `${num(d)} m`, "map-dist")}</g>`;
+      } else {
+        edges += `<g class="map-measure live"><line ${xy}/>${labelAt(s, `${num(d)} m`, "")}</g>`;
       }
     }
-  } else {
-    const byId = Object.fromEntries(members.map((h) => [h.id, h]));
-    edges = links
-      .map((l) => {
-        const a = byId[l.from_id];
-        const b = byId[l.to_id];
-        if (!a || !b) return "";
-        const s = segment(a, b);
-        return s.long
-          ? `<line class="map-link ${l.risk === "high" ? "high" : ""}" x1="${s.x1.toFixed(1)}" y1="${s.y1.toFixed(1)}" x2="${s.x2.toFixed(1)}" y2="${s.y2.toFixed(1)}"><title>${esc(shortName(a))} to ${esc(shortName(b))}: ${esc(l.distance_m)} m, ${esc(l.risk)} exposure</title></line>`
-          : "";
-      })
-      .join("");
   }
 
   const nodes = members
@@ -138,20 +161,21 @@ function yardSvg(key, members, links) {
       const measured = !isSynthetic(h);
       const selected = mapSelection[key] === h.id;
       const value = h.mites_per_day != null ? num(h.mites_per_day) : "–";
+      const unit = h.mites_per_day != null ? "mites/day" : "no count";
       const label = `${displayName(h)}, ${STATUS[s]}, ${h.mites_per_day != null ? `${num(h.mites_per_day)} mites per day` : "no inspection"}${measured ? ", measured" : ""}`;
-      return `<g class="map-node${measured ? " measured" : ""}${selected ? " selected" : ""}${editing ? " draggable" : ""}" data-map-hive="${esc(h.id)}" data-map-farm="${esc(key)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${esc(label)}">
+      return `<g class="map-node${measured ? " measured" : ""}${selected ? " selected" : ""}${editing ? " draggable" : ""}${ed?.dragging === h.id ? " dragging" : ""}" data-map-hive="${esc(h.id)}" data-map-farm="${esc(key)}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${esc(label)}">
         <title>${esc(label)}${editing ? `. Position ${num(p.x, 2)} m, ${num(p.y, 2)} m` : ""}</title>
-        ${measured || selected ? `<rect class="map-ring" x="${(cx - tw / 2 - 5).toFixed(1)}" y="${(cy - th / 2 - 5).toFixed(1)}" width="${tw + 10}" height="${th + 10}" rx="13"/>` : ""}
-        <rect class="map-tile" x="${(cx - tw / 2).toFixed(1)}" y="${(cy - th / 2).toFixed(1)}" width="${tw}" height="${th}" rx="9" fill="${fill}" stroke="${stroke}"/>
-        <text class="map-value" x="${cx.toFixed(1)}" y="${(cy + 1).toFixed(1)}" text-anchor="middle" style="fill:${ink}">${esc(value)}</text>
-        <text class="map-unit" x="${cx.toFixed(1)}" y="${(cy + 14).toFixed(1)}" text-anchor="middle" style="fill:${ink}">mites/day</text>
-        <text class="map-label" x="${cx.toFixed(1)}" y="${(cy + th / 2 + 17).toFixed(1)}" text-anchor="middle">${esc(shortName(h))}</text>
+        ${measured || selected ? `<rect class="map-ring" x="${(cx - tw / 2 - 5).toFixed(1)}" y="${(cy - th / 2 - 5).toFixed(1)}" width="${tw + 10}" height="${th + 10}" rx="${compact ? 10 : 13}"/>` : ""}
+        <rect class="map-tile" x="${(cx - tw / 2).toFixed(1)}" y="${(cy - th / 2).toFixed(1)}" width="${tw}" height="${th}" rx="${compact ? 7 : 9}" fill="${fill}" stroke="${stroke}"/>
+        <text class="map-value${compact ? " compact" : ""}" x="${cx.toFixed(1)}" y="${(cy + (compact ? 4.5 : 1)).toFixed(1)}" text-anchor="middle" style="fill:${ink}">${esc(value)}</text>
+        ${compact ? "" : `<text class="map-unit" x="${cx.toFixed(1)}" y="${(cy + 14).toFixed(1)}" text-anchor="middle" style="fill:${ink}">${unit}</text>`}
+        <text class="map-label${compact ? " compact" : ""}" x="${cx.toFixed(1)}" y="${(cy + th / 2 + (compact ? 13 : 17)).toFixed(1)}" text-anchor="middle">${esc(shortName(h))}</text>
       </g>`;
     })
     .join("");
 
   return `<svg viewBox="0 0 ${W} ${H}" role="group" aria-label="Yard map, hive positions in metres"
-    data-min-x="${minX}" data-min-y="${minY}" data-off-x="${offX.toFixed(2)}" data-pad-t="${pad.t}" data-scale="${scale.toFixed(4)}">${grid}${edges}${nodes}</svg>`;
+    data-min-x="${minX}" data-min-y="${minY}" data-max-x="${maxX}" data-max-y="${maxY}" data-off-x="${offX.toFixed(2)}" data-pad-t="${pad.t}" data-scale="${scale.toFixed(4)}">${grid}${edges}${nodes}</svg>`;
 }
 
 /* ── Side panel ──────────────────────────────────────────────────────── */
@@ -172,7 +196,7 @@ function paintPicker(h) {
 function hiveDetail(key, h) {
   if (!h) {
     return yardEdit[key]
-      ? `<p class="map-hint">Drag hives to where they stand. Select one and use the arrow keys to move it ${SNAP_M} m, or 1 m with Shift. Lines show distances under ${MEASURE_M} m; red means a critical hive is within ${DRIFT_M} m.</p>`
+      ? `<p class="map-hint">Drag hives to where they stand. Select one and use the arrow keys to move it ${SNAP_M} m, or 1 m with Shift. The red lines follow the hives as you move them. While you drag, grey lines show the distance to every hive within ${MEASURE_M} m.</p>`
       : '<p class="map-hint">Select a hive on the map to see its numbers and set its colour.</p>';
   }
   const s = statusOf(h.overall);
@@ -228,9 +252,11 @@ function farmMapPanel(key, members, links, showFarmName) {
       <div class="panel-title-group"><h2>${esc(title)}</h2><span class="sub-text">${esc(sub)}</span></div>
       <div class="page-actions">${actions}</div>
     </header>
+    <p class="map-explain">Lines show where mites can spread. Drifting and robbing bees carry varroa from a hive dropping ${num(state?.thresholds?.mites_per_day_high ?? 10, 0)} or more mites a day to its neighbours within ${DRIFT_M} m. A hive without a line is not near such a hive.</p>
     <div class="map-legend map-legend-row">
       <span><i class="dot good"></i>Below 3</span><span><i class="dot watch"></i>3–10</span><span><i class="dot act"></i>10+ mites/day</span>
-      ${editing ? '<span><i class="key-line measure"></i>Distance</span><span><i class="key-line high"></i>Within 4 m of a critical hive</span>' : '<span><i class="key-line high"></i>High exposure</span><span><i class="key-line"></i>Moderate</span>'}
+      <span><i class="key-line high"></i>Under 2.8 m from a 10+ hive</span><span><i class="key-line"></i>2.8–4 m</span>
+      ${editing ? '<span><i class="key-line measure"></i>Distance while dragging</span>' : ""}
       <span><i class="key-ring"></i>Measured</span>
     </div>`;
   if (!members.length) {
@@ -247,22 +273,23 @@ function farmMapPanel(key, members, links, showFarmName) {
     ? sorted
         .map(
           (l) => `<button type="button" class="drift-item ${l.risk === "high" ? "high" : ""}" data-map-hive="${esc(l.to_id)}" data-map-farm="${esc(key)}">
-            <span class="drift-item-top"><span>${esc(shortName(byId[l.from_id] || { name: l.from_name }))} → ${esc(shortName(byId[l.to_id] || { name: l.to_name }))}</span><span class="drift-dist">${esc(l.distance_m)} m</span></span>
-            <small>${l.risk === "high" ? "High" : "Moderate"} exposure, source ${num(byId[l.from_id]?.mites_per_day)} mites/day</small>
+            <span class="drift-item-top"><span>${esc(shortName(byId[l.to_id] || { name: l.to_name }))}</span><span class="drift-dist">${l.risk === "high" ? "High" : "Moderate"}</span></span>
+            <small>${esc(l.distance_m)} m from ${esc(shortName(byId[l.from_id] || { name: l.from_name }))}, which drops ${num(byId[l.from_id]?.mites_per_day)} mites a day</small>
           </button>`,
         )
-        .join("")
-    : '<p class="hint">No hive is within 4 m of a critical hive.</p>';
+        .join("") +
+      '<p class="hint drift-advice">To cut drift: treat the source hive first, move its close neighbours further away, or paint neighbouring hives different colours.</p>'
+    : `<p class="hint">No hive stands within ${DRIFT_M} m of a hive dropping 10 or more mites a day.</p>`;
   return `<section class="panel farm-map${editing ? " editing" : ""}" data-farm-map="${esc(key)}">
     ${head}
-    ${editing ? arrangeForm(key, members.length) : ""}
     <div class="map-workspace">
       <div class="apiary-map-canvas">${yardSvg(key, members, links)}</div>
       <aside class="drift-sidebar">
         ${hiveDetail(key, byId[mapSelection[key]])}
-        ${editing ? "" : `<h4>Exposed pairs <span class="count">${sorted.length}</span></h4><div class="drift-list">${pairs}</div>`}
+        ${editing ? "" : `<h4>Mite drift risk <span class="count">${sorted.length}</span></h4><div class="drift-list">${pairs}</div>`}
       </aside>
     </div>
+    ${editing ? arrangeForm(key, members.length) : ""}
   </section>`;
 }
 
@@ -298,6 +325,7 @@ function startEdit(key) {
     dirty: false,
     arrange: { rows: Math.max(1, Math.round(Math.sqrt(members.length))), spacing: 2.5, gap: 2.5, pattern: "straight" },
   };
+  normalise(key);
   renderFarmMaps();
 }
 
@@ -333,61 +361,143 @@ async function resetLayout(key, button) {
   });
 }
 
-// Dragging a hive tile: move it live, then snap and redraw on release.
+// Dragging a hive tile works straight away: the first real move switches the map into layout
+// editing (nothing is saved until Save layout). A plain click still just selects the hive.
+// While dragging, the map is redrawn on every move, so lines and distances follow the hive.
+const DRAG_START_PX = 4;
 let drag = null;
 
-function svgPoint(svg, event) {
+function farmParts(key) {
+  const members = hivesOfFarm(key);
+  const ids = new Set(members.map((h) => h.id));
+  const links = (state?.apiary?.drift_links || []).filter((l) => ids.has(l.from_id) && ids.has(l.to_id));
+  return { members, links };
+}
+
+function canvasOf(key) {
+  return document.querySelector(`[data-farm-map="${CSS.escape(key)}"] .apiary-map-canvas`);
+}
+
+function metresAt(svg, clientX, clientY) {
   const pt = svg.createSVGPoint();
-  pt.x = event.clientX;
-  pt.y = event.clientY;
-  return pt.matrixTransform(svg.getScreenCTM().inverse());
+  pt.x = clientX;
+  pt.y = clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const d = svg.dataset;
+  return { x: Number(d.minX) + (p.x - Number(d.offX)) / Number(d.scale), y: Number(d.minY) + (p.y - Number(d.padT)) / Number(d.scale) };
+}
+
+function redrawCanvas(key) {
+  const canvas = canvasOf(key);
+  if (!canvas) return null;
+  const { members, links } = farmParts(key);
+  canvas.innerHTML = yardSvg(key, members, links);
+  return canvas;
+}
+
+// Shifts the layout so it starts at 0 m on both axes; only the spacing matters.
+function normalise(key) {
+  const pos = Object.values(yardEdit[key].pos);
+  const minX = Math.min(...pos.map((p) => p.x));
+  const minY = Math.min(...pos.map((p) => p.y));
+  if (!minX && !minY) return;
+  const cm = (v) => Math.round(v * 100) / 100; // shift only: keep each hive's own spacing exactly
+  for (const p of pos) {
+    p.x = cm(p.x - minX);
+    p.y = cm(p.y - minY);
+  }
+}
+
+function activateDrag(event) {
+  const { key, id } = drag;
+  if (!yardEdit[key]) {
+    startEdit(key); // redraws the map in editing mode
+    toast("Layout editing is on. Select Save layout to keep the new positions.");
+  }
+  let canvas = canvasOf(key);
+  const svg = canvas?.querySelector("svg");
+  if (!svg) {
+    drag = null;
+    return;
+  }
+  const ed = yardEdit[key];
+  const from = metresAt(svg, drag.startX, drag.startY);
+  const pos = ed.pos[id];
+  // Keep the yard exactly as drawn for the length of the drag: same scale, nothing jumps.
+  const d = svg.dataset;
+  ed.frozen = { minX: Number(d.minX), minY: Number(d.minY), maxX: Number(d.maxX), maxY: Number(d.maxY) };
+  ed.dragging = id;
+  mapSelection[key] = id;
+  canvas = redrawCanvas(key);
+  Object.assign(drag, { active: true, canvas, grab: { x: pos.x - from.x, y: pos.y - from.y } });
+  document.documentElement.classList.add("dragging-hive");
+  try {
+    canvas.setPointerCapture(event.pointerId); // keep receiving moves outside the map
+  } catch {
+    /* pointer already released or synthetic: moves still reach the document */
+  }
 }
 
 document.addEventListener("pointerdown", (event) => {
-  const node = event.target.closest(".map-node.draggable");
+  const node = event.target.closest(".map-node");
   if (!node || event.button !== 0) return;
-  const svg = node.ownerSVGElement;
-  const start = svgPoint(svg, event);
-  drag = { node, svg, start, key: node.dataset.mapFarm, id: node.dataset.mapHive, moved: false, pointer: event.pointerId };
-  node.setPointerCapture(event.pointerId);
-  node.classList.add("dragging");
-  event.preventDefault();
+  drag = { key: node.dataset.mapFarm, id: node.dataset.mapHive, pointer: event.pointerId, startX: event.clientX, startY: event.clientY, active: false };
+  if (yardEdit[drag.key]) event.preventDefault(); // already editing: no text selection, no scroll
 });
 
 document.addEventListener("pointermove", (event) => {
   if (!drag || event.pointerId !== drag.pointer) return;
-  const p = svgPoint(drag.svg, event);
-  const dx = p.x - drag.start.x;
-  const dy = p.y - drag.start.y;
-  if (Math.hypot(dx, dy) > 2) drag.moved = true;
-  drag.node.setAttribute("transform", `translate(${dx.toFixed(1)} ${dy.toFixed(1)})`);
-  drag.dx = dx;
-  drag.dy = dy;
+  if (!drag.active) {
+    if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < DRAG_START_PX) return;
+    activateDrag(event);
+    if (!drag) return;
+  }
+  event.preventDefault();
+  const ed = yardEdit[drag.key];
+  const svg = drag.canvas.querySelector("svg");
+  const m = metresAt(svg, event.clientX, event.clientY);
+  const f = ed.frozen;
+  const to = {
+    x: snap(Math.min(f.maxX - 0.5, Math.max(f.minX + 0.5, m.x + drag.grab.x))),
+    y: snap(Math.min(f.maxY - 0.5, Math.max(f.minY + 0.5, m.y + drag.grab.y))),
+  };
+  const now = ed.pos[drag.id];
+  if (to.x === now.x && to.y === now.y) return;
+  ed.pos[drag.id] = to;
+  ed.dirty = true;
+  redrawCanvas(drag.key);
 });
 
 function endDrag(event) {
   if (!drag || event.pointerId !== drag.pointer) return;
-  const { key, id, svg, moved, dx = 0, dy = 0 } = drag;
+  const { key, id, active, canvas } = drag;
   drag = null;
-  mapSelection[key] = id;
-  if (moved) {
-    const scale = Number(svg.dataset.scale);
-    const p = yardEdit[key].pos[id];
-    yardEdit[key].pos[id] = { x: snap(p.x + dx / scale), y: snap(p.y + dy / scale) };
-    yardEdit[key].dirty = true;
+  document.documentElement.classList.remove("dragging-hive");
+  if (!active) return; // a click: the click handler selects the hive
+  const ed = yardEdit[key];
+  ed.frozen = null;
+  ed.dragging = null;
+  try {
+    if (canvas?.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+  } catch {
+    /* already released */
   }
+  normalise(key);
   renderFarmMaps();
   refocus(key, id);
+  suppressClickUntil = performance.now() + 300; // the click the browser fires at the end of the drag
 }
 document.addEventListener("pointerup", endDrag);
 document.addEventListener("pointercancel", endDrag);
+let suppressClickUntil = 0;
 
 /* ── Events ──────────────────────────────────────────────────────────── */
 document.addEventListener("click", (event) => {
   const t = event.target;
+  if (performance.now() < suppressClickUntil && t.closest(".map-node")) return;
   const nodeOrPair = t.closest("[data-map-hive]");
   if (nodeOrPair) {
-    if (!nodeOrPair.classList.contains("draggable")) pickMapHive(nodeOrPair.dataset.mapFarm, nodeOrPair.dataset.mapHive);
+    pickMapHive(nodeOrPair.dataset.mapFarm, nodeOrPair.dataset.mapHive);
     return;
   }
   const el = t.closest("[data-yard-edit],[data-yard-cancel],[data-yard-save],[data-yard-reset],[data-paint]");
@@ -429,12 +539,14 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   const move = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
-  if (!move || !yardEdit[key]) return;
+  if (!move) return;
   event.preventDefault();
+  if (!yardEdit[key]) startEdit(key);
   const stepM = event.shiftKey ? 1 : SNAP_M;
   const p = yardEdit[key].pos[id];
   yardEdit[key].pos[id] = { x: snap(p.x + move[0] * stepM), y: snap(p.y + move[1] * stepM) };
   yardEdit[key].dirty = true;
+  normalise(key);
   mapSelection[key] = id;
   renderFarmMaps();
   refocus(key, id);
@@ -452,3 +564,11 @@ async function paintHive(hiveId, color, button) {
     toast(e.message, true);
   }
 }
+
+// Warn before a reload or closing the tab would throw away an unsaved layout.
+window.addEventListener("beforeunload", (event) => {
+  if (Object.values(yardEdit).some((ed) => ed?.dirty)) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
