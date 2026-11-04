@@ -25,6 +25,7 @@ _load_dotenv(ROOT / ".env")
 
 API_BASE = os.getenv("META_API_BASE", "https://api.meta.ai/v1")
 API_KEY = os.getenv("MODEL_API_KEY", "")
+API_IPV6 = os.getenv("HIVELENS_API_IPV6", "0") == "1"
 REASONING_MODEL = os.getenv("HIVELENS_REASONING_MODEL", "muse-spark-1.3")
 SEGMENT_MODEL = os.getenv("HIVELENS_SEGMENT_MODEL", "sam-3.1")
 REASONING_EFFORT = os.getenv("HIVELENS_REASONING_EFFORT", "medium")

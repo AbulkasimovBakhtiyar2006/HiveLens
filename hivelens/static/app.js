@@ -331,10 +331,10 @@ async function loadState() {
       selectedHive = measuredHives[0]?.id || state.hives[0]?.id || null;
     }
     const conn = $("api-state");
-    conn.innerHTML = `<i></i>${state.has_api_key ? "Connected" : "No API key"}`;
+    conn.innerHTML = `<i></i>${state.has_api_key ? "Key configured" : "No API key"}`;
     conn.classList.toggle("offline", !state.has_api_key);
     conn.title = state.has_api_key
-      ? `Meta Model API active: ${state.segment_model} + ${state.reasoning_model}`
+      ? `Server key configured for ${state.segment_model} + ${state.reasoning_model}. Model availability is checked when an analysis runs.`
       : "Set MODEL_API_KEY in .env to run an analysis.";
     $("version").textContent = state.version ? `v${state.version}` : "v0.1";
     $("models").textContent = `${state.segment_model}, ${state.reasoning_model}`;

@@ -29,7 +29,16 @@ def client():
         )
     from openai import OpenAI
 
-    c = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY, timeout=180, max_retries=3)
+    options = {}
+    if config.API_IPV6:
+        # The locked OpenAI SDK uses httpx2. Bind only this client's connections,
+        # leaving DNS and all unrelated network traffic unchanged.
+        import httpx2
+
+        options["http_client"] = httpx2.Client(
+            transport=httpx2.HTTPTransport(local_address="::"), timeout=180,
+        )
+    c = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY, timeout=180, max_retries=3, **options)
     _meter(c)
     return c
 

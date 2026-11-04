@@ -10,6 +10,10 @@ The bundled benchmark and public illustrations remain available when `/data` is 
 - `HIVELENS_AUTH_USER`: login name, e.g. `judge`.
 - `HIVELENS_AUTH_PASSWORD`: a unique random password, at least 16 characters.
 - `MODEL_API_KEY`: the owner's Meta Model API credential, only in Railway variables.
+- `HIVELENS_API_IPV6=1`: use IPv6 for the model client. Also enable and apply
+  **Outbound IPv6** in Railway Networking. Our deployment returned model-not-found
+  over IPv4 while the same key and requests succeeded over IPv6. Local installs
+  keep the default network selection unless explicitly configured otherwise.
 - `HIVELENS_PUBLIC_READ=1`: allow visitors to browse saved records, images, exports,
   study data and benchmarks without a password. All POST writes/model calls and
   job streams still require owner sign-in. Enable only for data intended to be public.

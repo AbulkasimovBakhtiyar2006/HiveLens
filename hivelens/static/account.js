@@ -161,7 +161,7 @@ function fillSettings(data) {
   $("photo-remove").hidden = !data.settings.profile.photo_version;
   const a = data.api;
   $("api-info").innerHTML = `
-    <div><dt>API key</dt><dd>${a.has_api_key ? '<span class="badge good">Set in .env</span>' : '<span class="badge act">Missing</span> Add MODEL_API_KEY to the .env file.'}</dd></div>
+    <div><dt>API key</dt><dd>${a.has_api_key ? '<span class="badge good">Configured on server</span>' : '<span class="badge act">Missing</span> Configure MODEL_API_KEY on the server.'}</dd></div>
     <div><dt>Endpoint</dt><dd><code>${esc(a.base_url)}</code></dd></div>
     <div><dt>Segmentation</dt><dd><code>${esc(a.segment_model)}</code></dd></div>
     <div><dt>Reasoning</dt><dd><code>${esc(a.reasoning_model)}</code>, effort ${esc(a.reasoning_effort)}</dd></div>
