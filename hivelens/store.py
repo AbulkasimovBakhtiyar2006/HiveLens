@@ -91,6 +91,26 @@ def create_farm(name: str, location: str = "") -> dict:
     return farm
 
 
+FARM_FIELDS = ("name", "location", "maps_url", "breed", "lat", "lon", "place", "country_code", "elevation_m")
+
+
+def update_farm(farm_id: str, **fields) -> dict:
+    """Changes the given farm fields (see FARM_FIELDS); None clears a field."""
+    farms = list_farms()
+    farm = next((f for f in farms if f["id"] == farm_id), None)
+    if farm is None:
+        raise ValueError(f"Unknown farm: {farm_id}")
+    for key, value in fields.items():
+        if key not in FARM_FIELDS:
+            raise ValueError(f"Unknown farm field: {key}")
+        if value is None:
+            farm.pop(key, None)
+        else:
+            farm[key] = value
+    _farms_path().write_text(json.dumps(farms, indent=2))
+    return farm
+
+
 def ensure_farm(name: str, location: str = "") -> dict:
     """The farm with this name, created if it does not exist yet."""
     return next((f for f in list_farms() if f["name"] == name), None) or create_farm(name, location)

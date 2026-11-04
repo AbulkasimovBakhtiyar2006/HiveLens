@@ -1,0 +1,407 @@
+/* Farm weather, bee flight conditions and the resizable sidebar. Uses the tokens from app.css. */
+
+/* ── Resizable sidebar ──────────────────────────────────────────────── */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  width: 12px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+.sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background-color 0.15s;
+}
+.sidebar-resizer:hover::after,
+.sidebar-resizer:focus-visible::after,
+.resizing .sidebar-resizer::after {
+  background: var(--accent-border);
+}
+.sidebar-resizer:focus-visible {
+  outline: none;
+}
+.resizing,
+.resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+/* ── Weather panel ──────────────────────────────────────────────────── */
+#farm-conditions:empty {
+  display: none;
+}
+.cond-body {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) minmax(220px, 300px);
+  gap: 24px;
+  align-items: start;
+  padding: var(--pad);
+}
+.cond-body.no-weather {
+  grid-template-columns: minmax(0, 1fr);
+  padding-top: 0;
+}
+.cond-when {
+  font-size: 0.86rem;
+  color: var(--text-2);
+}
+.cond-temp {
+  margin: 2px 0;
+  font-size: 46px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.cond-temp small {
+  margin-left: 2px;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.cond-text {
+  margin-bottom: 12px;
+  color: var(--text-2);
+}
+.cond-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0 0 14px;
+}
+.cond-stats dt,
+.cond-fact dt {
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.cond-stats dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.wind-arrow {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  vertical-align: -2px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.flight {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--border-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-2);
+  font-size: 0.86rem;
+}
+.flight strong {
+  margin-right: 4px;
+}
+.flight.good {
+  border-left-color: var(--good);
+  background: var(--good-soft);
+}
+.flight.limited {
+  border-left-color: var(--watch);
+  background: var(--watch-soft);
+}
+.cond-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding-left: 24px;
+  border-left: 1px solid var(--border);
+}
+.no-weather .cond-facts {
+  padding-left: 0;
+  border-left: 0;
+}
+.cond-fact dd {
+  margin: 2px 0 0;
+}
+.cond-fact p {
+  margin-top: 2px;
+  font-size: 0.86rem;
+  color: var(--text-2);
+}
+.cond-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: var(--pad);
+  color: var(--text-2);
+}
+
+.cond-hours-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 var(--pad);
+}
+.cond-hours-head h3 {
+  font-size: 0.93rem;
+}
+.cond-hours {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 10px var(--pad) 16px;
+}
+.hour {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  flex: none;
+  width: 60px;
+  padding: 8px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.hour:hover {
+  background: var(--row-hover);
+}
+.hour[aria-pressed="true"] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.hour-time,
+.hour-wind {
+  font-size: 0.75rem;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.hour-temp {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.hour-rain {
+  display: flex;
+  align-items: flex-end;
+  width: 6px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--surface-2);
+}
+.hour-rain i {
+  display: block;
+  width: 100%;
+  background: var(--rain);
+}
+.hour-flight,
+.flight-tag::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.hour-flight.good,
+.flight-tag.good::before {
+  background: var(--good);
+}
+.hour-flight.limited,
+.flight-tag.limited::before {
+  background: var(--watch);
+}
+
+.cond-days {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+}
+.day {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 12px var(--pad);
+  box-shadow: -1px 0 0 var(--border);
+}
+.day .wx {
+  grid-row: span 2;
+}
+.day strong {
+  display: block;
+  font-size: 0.93rem;
+}
+.day span {
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.day-num {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+.day-num b {
+  color: var(--text);
+}
+.day-meta {
+  grid-column: 2 / -1;
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+/* All-farms cards */
+.wcards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 12px;
+  padding: var(--pad);
+}
+.wcard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wcard:hover {
+  background: var(--row-hover);
+}
+.wcard.empty {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px;
+  border-style: dashed;
+  cursor: default;
+}
+.wcard.empty p {
+  font-size: 0.86rem;
+  color: var(--text-2);
+}
+.wcard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.wcard-temp {
+  font-weight: 650;
+}
+.wcard-temp .muted {
+  font-weight: 400;
+}
+.wcard-meta {
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.flight-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.flight-tag::before {
+  content: "";
+  display: inline-block;
+}
+
+/* ── Weather icons (Meteocons, MIT) ─────────────────────────────────── */
+.wx {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+.wx img {
+  display: block;
+}
+.wx .wx-wind {
+  position: absolute;
+  right: -4%;
+  bottom: 2%;
+}
+.wx-lg {
+  width: 100%;
+  min-height: 168px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.wx-lg > img:first-child {
+  width: 168px;
+  height: 168px;
+}
+.wx-md {
+  width: 72px;
+  height: 72px;
+}
+.wx-sm {
+  width: 52px;
+  height: 52px;
+}
+.wx.placeholder {
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.wx-stat {
+  width: 22px;
+  height: 22px;
+  margin: -4px 2px -6px -4px;
+  vertical-align: middle;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  .cond-body {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  }
+  .cond-facts {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 14px 32px;
+    padding: 16px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  .cond-facts > * {
+    flex: 1 1 240px;
+  }
+  .cond-days {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .day {
+    box-shadow: -1px 0 0 var(--border), 0 -1px 0 var(--border);
+  }
+}
+@media (max-width: 860px) {
+  .sidebar-resizer {
+    display: none;
+  }
+}
+@media (max-width: 560px) {
+  .cond-body,
+  .cond-days {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

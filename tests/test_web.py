@@ -130,3 +130,78 @@ def test_hives_without_a_farm_are_listed_as_unassigned(web):
     farms = json.loads(web('/api/state')[2])['apiary']['farms']
     assert farms == [{'id': None, 'name': 'Unassigned', 'location': '', 'hive_count': 1,
                       'counts': {'good': 0, 'watch': 0, 'act': 0, 'unknown': 1}, 'overall': 'unknown'}]
+
+
+# ── Farm location and weather (network calls are faked) ────────────────
+from hivelens import place  # noqa: E402
+
+
+@pytest.mark.parametrize('text, expected', [
+    ('https://www.google.com/maps/place/Talgar/@43.30,77.23,13z/data=!3m1!4b1!3d43.30235!4d77.23811', (43.30235, 77.23811)),
+    ('https://www.google.com/maps/@43.25,76.95,15z', (43.25, 76.95)),
+    ('https://maps.google.com/?q=43.1,77.5', (43.1, 77.5)),
+    ('43.30, 77.24', (43.30, 77.24)),
+    ('Talgar, Kazakhstan', None),
+    ('95, 200', None),
+])
+def test_parse_coordinates(text, expected):
+    assert place.parse_coordinates(text) == expected
+
+
+@pytest.mark.parametrize('temp, wind, rain, code, day, level', [
+    (20, 2, 0, 0, True, 'good'),
+    (11, 2, 0, 0, True, 'limited'),
+    (20, 7, 0, 1, True, 'limited'),
+    (20, 12, 0, 1, True, 'none'),
+    (8, 1, 0, 0, True, 'none'),
+    (20, 1, 1.5, 61, True, 'none'),
+    (20, 1, 0, 0, False, 'none'),
+])
+def test_bee_flight(temp, wind, rain, code, day, level):
+    assert place.bee_flight(temp, wind, rain, code, day)['level'] == level
+
+
+def test_farm_location_breed_and_weather(web, monkeypatch):
+    calls = []
+
+    def fake_get_json(url, timeout=8.0):
+        calls.append(url)
+        if 'geocoding' in url:
+            return {'results': [{'name': 'Talghar', 'admin1': 'Almaty Region', 'country': 'Kazakhstan',
+                                 'country_code': 'KZ', 'latitude': 43.3, 'longitude': 77.24, 'elevation': 980}]}
+        hours = [f'2026-11-04T{h:02d}:00' for h in range(24)]
+        return {'timezone': 'Asia/Almaty', 'elevation': 980,
+                'current': {'time': '2026-11-04T12:00', 'temperature_2m': 18, 'wind_speed_10m': 3, 'precipitation': 0,
+                            'weather_code': 2, 'is_day': 1, 'wind_gusts_10m': 5, 'wind_direction_10m': 90},
+                'hourly': {'time': hours, 'temperature_2m': [18] * 24, 'precipitation_probability': [10] * 24,
+                           'precipitation': [0] * 24, 'weather_code': [2] * 24, 'wind_speed_10m': [3] * 24,
+                           'wind_direction_10m': [90] * 24, 'wind_gusts_10m': [5] * 24, 'is_day': [1] * 24},
+                'daily': {'time': ['2026-11-04'], 'weather_code': [61], 'temperature_2m_max': [19], 'temperature_2m_min': [6],
+                          'precipitation_sum': [2.5], 'precipitation_probability_max': [70], 'wind_speed_10m_max': [6],
+                          'wind_gusts_10m_max': [11]}}
+
+    monkeypatch.setattr(place, '_get_json', fake_get_json)
+    monkeypatch.setattr(place, '_cache', {})
+    status, _, raw = web('/api/farms', {'name': 'Talgar', 'location': 'Talgar, Kazakhstan', 'breed': 'carpatica'})
+    farm = json.loads(raw)['farm']
+    assert status == 200 and farm['lat'] == 43.3 and farm['breed'] == 'carpatica' and farm['country_code'] == 'KZ'
+
+    weather = json.loads(web(f"/api/weather/{farm['id']}")[2])
+    assert weather['current']['scene'] == 'partly' and weather['current']['flight']['level'] == 'good'
+    assert len(weather['hourly']) == 12 and weather['daily'][0]['scene'] == 'rain'
+
+    # A map link wins over the place name and needs no geocoder call.
+    calls.clear()
+    status, _, raw = web('/api/farm_update', {'farm_id': farm['id'], 'name': 'Talgar', 'location': 'Talgar',
+                                              'maps_url': 'https://www.google.com/maps/@43.1,77.5,14z'})
+    farm = json.loads(raw)['farm']
+    assert status == 200 and (farm['lat'], farm['lon']) == (43.1, 77.5) and 'breed' not in farm
+    assert not any('geocoding' in u for u in calls)
+
+
+def test_farm_without_location_has_no_weather(web):
+    farm = json.loads(web('/api/farms', {'name': 'Home'})[2])['farm']
+    status, _, raw = web(f"/api/weather/{farm['id']}")
+    assert status == 409 and 'location' in json.loads(raw)['error']
+    assert web('/api/farms', {'name': 'X', 'breed': 'unicorn'})[0] == 400
+    assert web('/api/farm_update', {'farm_id': 'nowhere', 'name': 'X'})[0] == 404

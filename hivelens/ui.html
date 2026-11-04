@@ -5,11 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="HiveLens measures varroa mites, honey and brood from hive photos." />
   <title>Overview · HiveLens</title>
+  <link rel="icon" href="/static/mark.svg?v=2" type="image/svg+xml" sizes="any" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="/static/app.css" />
+  <link rel="stylesheet" href="/static/farm.css" />
+  <script>
+    // Apply the saved sidebar width before first paint.
+    try {
+      var w = JSON.parse(localStorage.getItem("hivelens:side-w"));
+      if (w >= 200 && w <= 440) document.documentElement.style.setProperty("--side-w", w + "px");
+    } catch (e) {}
+  </script>
   <script src="/static/app.js" defer></script>
+  <script src="/static/farm.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -18,8 +28,7 @@
     <aside class="sidebar" aria-label="Primary navigation">
       <div class="sidebar-brand">
         <a class="brand" href="#overview" aria-label="HiveLens home">
-          <!-- Logo: не умею рисовать иконку, её сделает другая ИИ. Это место под неё. -->
-          <span class="logo-slot" title="Icon placeholder: another AI will draw the logo">icon</span>
+          <img class="brand-mark" src="/static/mark.svg?v=2" width="28" height="28" alt="" />
           <span class="brand-name">HiveLens</span>
         </a>
         <span id="version" hidden>v0.1</span>
@@ -44,6 +53,9 @@
       <!-- Filled by app.js; kept out of view on purpose. -->
       <span id="api-state" hidden></span>
       <span id="models" hidden></span>
+      <div id="sidebar-resizer" class="sidebar-resizer" role="separator" aria-orientation="vertical"
+           aria-label="Sidebar width" aria-valuemin="200" aria-valuemax="440" aria-valuenow="236" tabindex="0"
+           title="Drag to resize. Double-click to reset."></div>
     </aside>
 
     <div class="workspace">
@@ -53,8 +65,10 @@
           <span id="topbar-colony-pill" class="colony-context-pill"></span>
         </div>
         <div class="topbar-right">
-          <button class="btn sm" type="button" data-add-hive>Add hive</button>
-          <button class="btn sm primary" type="button" data-go="inspect">New inspection</button>
+          <!-- Shown per page by updateTopbarActions() in app.js, so they never repeat page buttons. -->
+          <button id="top-add-farm" class="btn sm" type="button" data-add-farm hidden>Add farm</button>
+          <button id="top-add-hive" class="btn sm" type="button" data-add-hive hidden>Add hive</button>
+          <button id="top-new-inspection" class="btn sm primary" type="button" data-go="inspect">New inspection</button>
         </div>
       </header>
 
@@ -76,6 +90,8 @@
               <button class="btn" type="button" id="seed-demo">Load demo apiary</button>
             </div>
           </div>
+
+          <div id="farm-conditions"></div>
 
           <div id="overview-stats" class="kpi-strip" aria-label="Apiary summary"></div>
 
@@ -439,6 +455,7 @@
                 <p>All code was written during the Meta Global AI Developer Hackathon, October 26 to November 4, 2026.</p>
                 <p>Sticky-board photos: Divasón et al. (2023), <em>Dataset for varroa mite detection on sticky boards</em>, <a href="https://doi.org/10.5281/zenodo.10231845" target="_blank" rel="noopener">Zenodo, CC BY 4.0</a>.</p>
                 <p>Frame photos from Wikimedia Commons by Marc Andrighetti (CC BY-SA 3.0), John Pons (CC BY-SA 4.0) and Einebillion (CC BY 4.0).</p>
+                <p>Weather icons: <a href="https://github.com/basmilius/weather-icons" target="_blank" rel="noopener">Meteocons</a> by Bas Milius (MIT). Forecasts and place search: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0).</p>
               </div>
             </section>
           </div>
@@ -457,7 +474,7 @@
       <span class="spinner" id="job-spinner" aria-hidden="true"></span>
       <strong id="job-title">Starting…</strong>
       <span id="job-pct" class="job-pct">0%</span>
-      <button id="job-dismiss" class="icon-btn" type="button" aria-label="Dismiss" hidden>×</button>
+      <button id="job-dismiss" class="icon-btn" type="button" aria-label="Dismiss" hidden><span data-icon="close"></span></button>
     </div>
     <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="job-progress"><i id="job-bar"></i></div>
     <details>
@@ -471,7 +488,7 @@
     <form id="add-hive-form">
       <header class="modal-head">
         <h2>Add hive</h2>
-        <button class="icon-btn" type="button" data-close="add-hive-dialog" aria-label="Close">×</button>
+        <button class="icon-btn" type="button" data-close="add-hive-dialog" aria-label="Close"><span data-icon="close"></span></button>
       </header>
       <div class="modal-body">
         <label>Name <input id="new-hive-name" maxlength="100" placeholder="Hive #09" required /></label>
@@ -488,12 +505,28 @@
   <dialog id="add-farm-dialog" class="modal">
     <form id="add-farm-form">
       <header class="modal-head">
-        <h2>Add farm</h2>
-        <button class="icon-btn" type="button" data-close="add-farm-dialog" aria-label="Close">×</button>
+        <h2 id="farm-dialog-title">Add farm</h2>
+        <button class="icon-btn" type="button" data-close="add-farm-dialog" aria-label="Close"><span data-icon="close"></span></button>
       </header>
       <div class="modal-body">
+        <input id="edit-farm-id" type="hidden" />
         <label>Name <input id="new-farm-name" maxlength="100" placeholder="Talgar East" required /></label>
-        <label>Location <span class="hint-inline">(optional)</span> <input id="new-farm-location" maxlength="200" placeholder="Village, region" /></label>
+        <label>Place <span class="hint-inline">(town or village, used for the weather)</span> <input id="new-farm-location" maxlength="200" placeholder="Talgar, Kazakhstan" /></label>
+        <label>Google Maps link or coordinates <span class="hint-inline">(optional, more precise)</span>
+          <input id="new-farm-maps" maxlength="2000" placeholder="https://maps.app.goo.gl/… or 43.30, 77.24" />
+        </label>
+        <label>Bee breed
+          <select id="new-farm-breed">
+            <option value="">Not set</option>
+            <option value="carnica">Carniolan (A. m. carnica)</option>
+            <option value="carpatica">Carpathian (A. m. carpatica)</option>
+            <option value="mellifera">Central Russian (A. m. mellifera)</option>
+            <option value="caucasica">Caucasian (A. m. caucasica)</option>
+            <option value="ligustica">Italian (A. m. ligustica)</option>
+            <option value="buckfast">Buckfast</option>
+            <option value="local">Local or mixed</option>
+          </select>
+        </label>
       </div>
       <footer class="modal-foot">
         <button type="button" class="btn" data-close="add-farm-dialog">Cancel</button>
@@ -503,7 +536,7 @@
   </dialog>
 
   <dialog id="image-dialog" class="lightbox">
-    <button class="icon-btn" type="button" data-close="image-dialog" aria-label="Close image">×</button>
+    <button class="icon-btn" type="button" data-close="image-dialog" aria-label="Close image"><span data-icon="close"></span></button>
     <img id="full-image" alt="Full-size inspection image" />
   </dialog>
 

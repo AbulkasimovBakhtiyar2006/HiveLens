@@ -169,9 +169,36 @@ small {
 .skip-link:focus {
   top: 12px;
 }
-/* Icons are left to a dedicated icon pass; the UI reads without them. */
+/* Shared 24-unit drawing grid; icons inherit the surrounding text colour. */
 .icon {
-  display: none;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.2em;
+  pointer-events: none;
+}
+[data-icon] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn.sm .icon,
+.link-btn .icon {
+  width: 16px;
+  height: 16px;
+}
+.empty > .icon {
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 12px;
+  color: var(--text-2);
 }
 
 /* ── Form controls ──────────────────────────────────────────────────── */
@@ -327,18 +354,11 @@ input[type="checkbox"] {
   font-weight: 650;
   letter-spacing: -0.01em;
 }
-/* Placeholder for the logo; the real icon comes from a separate design pass. */
-.logo-slot {
-  display: grid;
-  place-items: center;
+.brand-mark {
+  display: block;
   flex: none;
   width: 28px;
   height: 28px;
-  border: 1px dashed var(--nav-text-2);
-  border-radius: var(--radius-sm);
-  color: var(--nav-text-2);
-  font-size: 9px;
-  font-weight: 500;
 }
 .side-nav {
   display: flex;
@@ -741,6 +761,9 @@ input[type="checkbox"] {
   background: var(--surface);
 }
 .attention-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 10px var(--pad);
   background: var(--act-soft);
   color: var(--act);
@@ -749,7 +772,8 @@ input[type="checkbox"] {
 }
 .attention-row {
   display: grid;
-  grid-template-columns: minmax(140px, 220px) 1fr;
+  grid-template-columns: minmax(140px, 220px) 1fr 18px;
+  align-items: center;
   gap: 16px;
   width: 100%;
   padding: 10px var(--pad);
@@ -1285,6 +1309,9 @@ kbd {
   object-fit: cover;
 }
 .preview .remove {
+  display: grid;
+  place-items: center;
+  padding: 0;
   position: absolute;
   top: 4px;
   right: 4px;
@@ -1296,6 +1323,10 @@ kbd {
   color: var(--text);
   line-height: 1;
   cursor: pointer;
+}
+.preview .remove .icon {
+  width: 14px;
+  height: 14px;
 }
 .preview small {
   display: block;
@@ -1519,11 +1550,21 @@ kbd {
   gap: 6px;
 }
 .flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   padding: 8px 12px;
   border-left: 3px solid var(--watch);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   background: var(--watch-soft);
   font-size: 0.93rem;
+}
+.flag > .icon {
+  margin-top: 2px;
+  color: var(--watch);
+}
+.flag.act > .icon {
+  color: var(--act);
 }
 .flag.act {
   border-left-color: var(--act);
@@ -1713,9 +1754,16 @@ kbd {
   font-size: 0.93rem;
 }
 .finding {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
   font-size: 0.93rem;
+}
+.finding > .icon {
+  color: var(--good);
+  margin-top: 2px;
 }
 .finding:last-child {
   border-bottom: 0;
@@ -2372,8 +2420,16 @@ dialog::backdrop {
     width: 150px;
   }
   .attention-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
+    grid-template-columns: minmax(0, 1fr) 18px;
+    gap: 2px 12px;
+  }
+  .attention-row > span {
+    grid-column: 1;
+  }
+  .attention-row > .icon {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-self: center;
   }
   :root {
     --h1: 24px;

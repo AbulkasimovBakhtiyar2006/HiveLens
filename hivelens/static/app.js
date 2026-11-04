@@ -6,29 +6,30 @@ const $ = (id) => document.getElementById(id);
 const esc = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+// Optical family: 24 × 24 grid, 1.75-unit strokes, rounded ends.
 const ICONS = {
-  scan: '<path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3M7 12h10"/>',
+  scan: '<path d="M8 4H6a2 2 0 0 0-2 2v2m12-4h2a2 2 0 0 1 2 2v2M4 16v2a2 2 0 0 0 2 2h2m8 0h2a2 2 0 0 0 2-2v-2M8 12h8"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
-  search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
-  hive: '<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9Z"/><path d="M8 10h8M8 14h8"/>',
+  search: '<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 4.5 4.5"/>',
+  hive: '<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9Z"/><path d="M8.5 9h7m-7 3h7m-7 3h7"/>',
   check: '<path d="m5 12 4.5 4.5L19 7"/>',
-  alert: '<path d="M12 4 2.5 20h19Z"/><path d="M12 10v4m0 3v.01"/>',
-  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>',
-  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
-  upload: '<path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
-  download: '<path d="M12 3v12m-5-5 5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
-  close: '<path d="m6 6 12 12M6 18 18 6"/>',
-  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.01"/>',
-  arrow: '<path d="M5 12h14m-6-6 6 6-6 6"/>',
-  external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
-  sort: '<path d="M8 4v16m0 0-3-3m3 3 3-3M16 20V4m0 0-3 3m3-3 3 3"/>',
-  grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
-  activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
-  chart: '<path d="M4 20h16M7 16v-5M12 16V7M17 16v-8"/>',
-  layers: '<path d="m12 2 10 5-10 5L2 7l10-5Z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/>',
-  microscope: '<path d="M6 18h8M3 21h18M14 21a7 7 0 1 0 0-14h-1M9 14h2M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/>',
+  alert: '<path d="M10.3 4.8a2 2 0 0 1 3.4 0l7.4 12.7a2 2 0 0 1-1.7 3H4.6a2 2 0 0 1-1.7-3Z"/><path d="M12 9v4m0 3.5v.1"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v1.5m0 16v1.5M2.5 12H4m16 0h1.5M5.3 5.3l1.1 1.1m11.2 11.2 1.1 1.1m-13.4 0 1.1-1.1M17.6 6.4l1.1-1.1"/>',
+  moon: '<path d="M20.5 13.1A8.5 8.5 0 0 1 10.9 3.5a8.5 8.5 0 1 0 9.6 9.6Z"/>',
+  upload: '<path d="M12 15V4m-4 4 4-4 4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
+  download: '<path d="M12 4v11m-4-4 4 4 4-4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
+  close: '<path d="m6.5 6.5 11 11m-11 0 11-11"/>',
+  info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5m0-8v.1"/>',
+  arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
+  external: '<path d="M14 4h6v6m0-6-9 9m7 1v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
+  sort: '<path d="M8 4v16m-3-3 3 3 3-3M16 20V4m-3 3 3-3 3 3"/>',
+  grid: '<rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/>',
+  activity: '<path d="M3 12h4l3-7 4 14 3-7h4"/>',
+  chart: '<path d="M4 4v16h16M8 15v-4m5 4V7m5 8v-5"/>',
+  layers: '<path d="m12 3 9 5-9 5-9-5Zm-9 10 9 5 9-5M3 18l9 5 9-5"/>',
+  microscope: '<path d="M4 21h16M9 17h4m0 4a6 6 0 0 0 2-11M8 4h6v7a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2Zm2 9v2h2v-2M10 4V2h2v2"/>',
 };
-const icon = (name) => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.hive}</svg>`;
+const icon = (name) => `<svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name] || ICONS.hive}</svg>`;
 const hydrateIcons = (root = document) =>
   root.querySelectorAll("[data-icon]").forEach((el) => {
     el.innerHTML = icon(el.dataset.icon);
@@ -192,6 +193,7 @@ function route() {
   }
   $("topbar-title").textContent = VIEWS[view];
   $("topbar-colony-pill").hidden = !["inspect", "history"].includes(view);
+  updateTopbarActions();
   document.title = `${VIEWS[view]} · HiveLens`;
   window.scrollTo({ top: 0, behavior: "instant" });
   renderView();
@@ -512,7 +514,17 @@ function pickMapHive(key, id) {
   node?.focus({ preventScroll: true });
 }
 
+// Top bar actions follow the page: adding belongs to the overview (a farm or all farms),
+// and pages that already have their own "New inspection" button don't get a second one.
+function updateTopbarActions() {
+  const overview = view === "overview";
+  $("top-add-farm").hidden = !(overview && selectedFarm === "all");
+  $("top-add-hive").hidden = !(overview && selectedFarm !== "all");
+  $("top-new-inspection").hidden = view === "inspect" || view === "history";
+}
+
 function renderOverview() {
+  updateTopbarActions();
   const all = hivesInView();
   const count = (s) => all.filter((h) => h.overall === s).length;
   const measuredCount = all.filter((h) => !isSynthetic(h)).length;
@@ -544,6 +556,7 @@ function renderOverview() {
     : "";
 
   renderFarmMaps();
+  if (typeof renderFarmConditions === "function") renderFarmConditions(); // farm.js
 
   const filters = [
     ["all", "All", all.length],
@@ -703,7 +716,7 @@ function renderPreviews() {
   previewUrls.forEach((url) => URL.revokeObjectURL(url));
   previewUrls = [];
   const preview = (src, name, kind, index, local = false) =>
-    `<div class="preview"><button type="button" data-image="${esc(src)}" aria-label="View ${esc(name)}"><img ${local ? "data-local-preview" : `src="${esc(src)}"`} alt="" decoding="async"></button><button type="button" class="remove" data-remove="${kind}" data-index="${esc(index)}" aria-label="Remove ${esc(name)}">×</button><small title="${esc(name)}">${esc(name)}</small></div>`;
+    `<div class="preview"><button type="button" data-image="${esc(src)}" aria-label="View ${esc(name)}"><img ${local ? "data-local-preview" : `src="${esc(src)}"`} alt="" decoding="async"></button><button type="button" class="remove" data-remove="${kind}" data-index="${esc(index)}" aria-label="Remove ${esc(name)}">${icon("close")}</button><small title="${esc(name)}">${esc(name)}</small></div>`;
   const filePreview = (file, kind, index) => {
     const url = URL.createObjectURL(file);
     previewUrls.push(url);
@@ -1343,10 +1356,6 @@ document.addEventListener("click", (event) => {
     $("add-hive-dialog").showModal();
     $("new-hive-name").focus();
   }
-  if (target.hasAttribute("data-add-farm")) {
-    $("add-farm-dialog").showModal();
-    $("new-farm-name").focus();
-  }
   if (target.dataset.close) $(target.dataset.close).close();
   if (target.dataset.hive) {
     event.preventDefault();
@@ -1448,21 +1457,7 @@ $("add-hive-form").addEventListener("submit", (event) => {
     toast(`${data.hive.name} added.`);
   });
 });
-$("add-farm-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const name = $("new-farm-name").value.trim();
-  if (!name) return $("new-farm-name").focus();
-  withButton($("create-farm"), async () => {
-    const data = await api("/api/farms", { name, location: $("new-farm-location").value.trim() });
-    $("add-farm-dialog").close();
-    $("add-farm-form").reset();
-    selectedFarm = data.farm.id;
-    store.set("farm", selectedFarm);
-    await loadState();
-    go("overview");
-    toast(`${data.farm.name} added.`);
-  });
-});
+// The farm form (add and edit) is handled in farm.js.
 document.addEventListener("keydown", (event) => {
   const node = event.target.closest?.(".map-node");
   if (node && (event.key === "Enter" || event.key === " ")) {

@@ -27,7 +27,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from hivelens import __version__, commons, config, engine, store
+from hivelens import __version__, commons, config, engine, place, store
 from hivelens.viz import CLASS_COLORS, CLASS_LABELS
 
 Image.MAX_IMAGE_PIXELS = None  # sticky-board photos are ~49 MP
@@ -91,6 +91,38 @@ def get_samples(force: bool = False) -> dict:
 
     _SAMPLE_CACHE = {"boards": boards, "frames": frames}
     return _SAMPLE_CACHE
+
+
+BREEDS = ("carnica", "ligustica", "buckfast", "caucasica", "mellifera", "carpatica", "local")
+
+
+def farm_fields(body: dict) -> dict:
+    """Validated farm fields from a request body. Raises ValueError with a message for the user."""
+    name = str(body.get("name", "")).strip()
+    loc = str(body.get("location", "")).strip()
+    maps = str(body.get("maps_url", "")).strip()
+    breed = str(body.get("breed", "")).strip()
+    if not name or len(name) > 100:
+        raise ValueError("Enter a farm name (up to 100 characters).")
+    if len(loc) > 200 or len(maps) > 2000:
+        raise ValueError("The location or map link is too long.")
+    if breed and breed not in BREEDS:
+        raise ValueError("Choose a bee breed from the list.")
+    return {"name": name, "location": loc, "maps_url": maps, "breed": breed}
+
+
+def locate_farm(fields: dict) -> tuple[dict, str | None]:
+    """Adds coordinates from the map link or place name. Returns the fields and a warning, if any."""
+    geo = {"lat": None, "lon": None, "place": None, "country_code": None, "elevation_m": None}
+    if not (fields["location"] or fields["maps_url"]):
+        return {**fields, **geo}, None
+    try:
+        hit = place.resolve(fields["location"], fields["maps_url"])
+    except Exception:
+        return {**fields, **geo}, "The map service did not answer, so the farm was saved without weather. Save it again later."
+    if not hit:
+        return {**fields, **geo}, "That place was not found. Paste a Google Maps link to show the weather."
+    return {**fields, **{k: hit.get(k) for k in geo}}, None
 
 
 def build_apiary_overview() -> dict:
@@ -529,8 +561,13 @@ class HiveLensHandler(BaseHTTPRequestHandler):
 
         if path.startswith("/static/"):
             # Explicit allowlist: never expose the data directory or local config.
-            assets = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "mark.svg": "image/svg+xml"}
+            assets = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "mark.svg": "image/svg+xml",
+                      "farm.css": "text/css; charset=utf-8", "farm.js": "text/javascript; charset=utf-8"}
             name = path.removeprefix("/static/")
+            # Weather icons (Meteocons, MIT): only plain names inside static/weather/.
+            if name.startswith("weather/") and _safe_part(name.removeprefix("weather/")) and name.endswith(".svg") \
+                    and (STATIC_DIR / name).is_file():
+                assets = {**assets, name: "image/svg+xml"}
             if name not in assets:
                 self._send_json({"error": "not found"}, 404)
                 return
@@ -574,6 +611,22 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 "benchmark": bench,
                 "demo_assets": {"numbers": demo_numbers, "images": demo_images},
             })
+            return
+
+        if path.startswith("/api/weather/"):
+            farm = store.get_farm(urllib.parse.unquote(path.removeprefix("/api/weather/")))
+            if farm is None:
+                self._send_json({"error": "Unknown farm."}, 404)
+                return
+            if farm.get("lat") is None or farm.get("lon") is None:
+                self._send_json({"error": "Add a location or a Google Maps link to this farm to see its weather."}, 409)
+                return
+            try:
+                data = place.forecast(farm["lat"], farm["lon"])
+            except Exception:
+                self._send_json({"error": "The weather service did not answer. Try again in a minute."}, 502)
+                return
+            self._send_json({"farm_id": farm["id"], **data})
             return
 
         if path.startswith("/api/demo_asset/"):
@@ -729,14 +782,23 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             self._send_json({"error": f"Invalid JSON: {e}"}, 400)
             return
 
-        if path == "/api/farms":
-            name = str(body.get("name", "")).strip()
-            loc = str(body.get("location", "")).strip()
-            if not name or len(name) > 100 or len(loc) > 200:
-                self._send_json({"error": "Enter a farm name (up to 100 characters)."}, 400)
+        if path in ("/api/farms", "/api/farm_update"):
+            try:
+                fields = farm_fields(body)
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, 400)
                 return
-            f = store.create_farm(name, loc)
-            self._send_json({"farm": f, "farms": store.list_farms(), "apiary": build_apiary_overview()})
+            if path == "/api/farm_update":
+                farm_id = str(body.get("farm_id", ""))
+                if store.get_farm(farm_id) is None:
+                    self._send_json({"error": "Unknown farm."}, 404)
+                    return
+            fields, warning = locate_farm(fields)
+            if path == "/api/farms":
+                f = store.create_farm(fields["name"], fields["location"])
+                farm_id = f["id"]
+            f = store.update_farm(farm_id, **{k: (v if v != "" else None) for k, v in fields.items() if k != "name"}, name=fields["name"])
+            self._send_json({"farm": f, "warning": warning, "farms": store.list_farms(), "apiary": build_apiary_overview()})
             return
 
         if path == "/api/hives":
