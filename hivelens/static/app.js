@@ -130,7 +130,7 @@ function applyTheme(theme) {
 }
 
 function applyPalette(value, updateUrl = false) {
-  const palette = value === "forest" ? "forest" : "honey";
+  const palette = value === "honey" ? "honey" : "forest";
   document.documentElement.dataset.palette = palette;
   store.set("palette", palette);
   document.querySelectorAll("[data-palette-choice]").forEach((button) => {
@@ -233,7 +233,6 @@ function route() {
   if (next === "main") return;
   if (view === "welcome" && next !== "welcome") {
     store.set("welcomed", true);
-    if (document.documentElement.dataset.layout === "atlas") store.set("atlas-welcomed", true);
   }
   view = Object.hasOwn(VIEWS, next) ? next : "overview";
   document.documentElement.dataset.view = view;
@@ -403,7 +402,7 @@ function renderFarmNav() {
         ? `<ul class="farm-hives">${members
             .map(
               (h) => `<li><button type="button" class="farm-hive" data-hive="${esc(h.id)}" data-destination="history" aria-current="${h.id === selectedHive}">
-                <i class="dot ${statusOf(h.overall)}"></i><span class="farm-name">${esc(shortName(h))}${isSynthetic(h) ? ' <small class="nav-demo">Demo</small>' : ""}</span><span class="farm-count">${h.mites_per_day != null ? num(h.mites_per_day) : "–"}</span>
+                <i class="dot ${statusOf(h.overall)}"></i><span class="farm-name"${isSynthetic(h) ? ' title="Demo data"' : ""}>${esc(shortName(h))}</span><span class="farm-count">${h.mites_per_day != null ? num(h.mites_per_day) : "–"}</span>
               </button></li>`,
             )
             .join("")}</ul>`
@@ -475,19 +474,11 @@ function renderOverview() {
     kpi("Critical", count("act"), `At least one critical check · ${sourceNote("act")}`, "act") +
     kpi("Drift exposure", exposed.length, `${demoExposure} with demo data · Within 4 m of a high-mite hive`, "watch");
 
-  if (document.documentElement?.dataset?.layout === "atlas") {
-    $("overview-stats").innerHTML =
-      kpi("Hives", all.length, farm ? "On this farm" : `${farmCount} farms`, "") +
-      kpi("Measured hives", measuredCount, "Hives with saved photo analyses", "") +
-      kpi("Demo hives", demoCount, "Simulated hives for exploring", "");
-    $("atlas-demo-note").hidden = demoCount === 0;
-    $("atlas-demo-note").innerHTML = `<div><strong>Explore the demo apiary</strong><p>${demoCount} example ${demoCount === 1 ? "hive illustrates" : "hives illustrate"} different conditions. Their readings and alerts are simulated; photo analyses are labelled Measured.</p></div><a href="#welcome">Quick introduction →</a>`;
-  }
 
   const urgent = all.filter((h) => h.overall === "act").sort((a, b) => Number(isSynthetic(a)) - Number(isSynthetic(b)));
   $("attention").hidden = !urgent.length;
   $("attention").innerHTML = urgent.length
-    ? `<div class="attention-head">${icon("alert")}${document.documentElement?.dataset?.layout === "atlas" ? "Inspection review" : "Requires action"} (${urgent.length})</div>` +
+    ? `<div class="attention-head">${icon("alert")}Requires action (${urgent.length})</div>` +
       urgent
         .map(
           (h) =>
@@ -1568,7 +1559,7 @@ hydrateIcons();
 applyTheme(store.get("corp_theme", "light"));
 applyPalette(document.documentElement.dataset.palette);
 restoreDraft();
-const initialView = entryView(location.hash.slice(1), document.documentElement.dataset.layoutPreview === "true" || store.get(document.documentElement.dataset.layout === "atlas" ? "atlas-welcomed" : "welcomed", false));
+const initialView = entryView(location.hash.slice(1), store.get("welcomed", false));
 if (initialView === "welcome" && location.hash !== "#welcome") history.replaceState(null, "", "#welcome");
 route();
 loadState().then((ok) => {

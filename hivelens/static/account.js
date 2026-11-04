@@ -238,29 +238,3 @@ $("photo-remove").addEventListener("click", () =>
     toast("Profile photo removed.");
   }),
 );
-
-/* ── Layout: Atlas or Classic ────────────────────────────────────────── */
-// The choice is stored in this browser and applied by the script in <head> before the page paints.
-const activeLayout = () => {
-  const l = document.documentElement.dataset.layout;
-  return !l ? "classic" : l === "atlas" ? "atlas" : null; // other layouts are comparison previews
-};
-
-function markLayoutChoice() {
-  const current = activeLayout();
-  document.querySelectorAll("[data-layout-choice]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.layoutChoice === current)));
-}
-
-document.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-layout-choice]");
-  if (!button) return;
-  const choice = button.dataset.layoutChoice;
-  if (choice === activeLayout()) return;
-  store.set("layout", choice);
-  const url = new URL(location.href);
-  url.searchParams.delete("layout"); // a preview link would override the saved choice
-  location.replace(url.toString());
-  if (url.toString() === location.href) location.reload();
-});
-
-markLayoutChoice();

@@ -40,10 +40,7 @@ def web(tmp_path, monkeypatch):
 
 def test_local_assets_and_allowlist(web):
     for path, content_type in [('/', 'text/html'), ('/static/app.css', 'text/css'),
-                               ('/static/app.js', 'text/javascript'), ('/static/mark.svg', 'image/svg+xml'),
-                               ('/designs', 'text/html'), ('/designs/', 'text/html'),
-                               ('/static/layouts.css', 'text/css'), ('/static/layouts.js', 'text/javascript'),
-                               ('/static/layouts-next.css', 'text/css'), ('/static/layouts-next.js', 'text/javascript')]:
+                               ('/static/app.js', 'text/javascript'), ('/static/mark.svg', 'image/svg+xml')]:
         status, headers, body = web(path)
         assert status == 200 and content_type in headers['Content-Type']
         assert len(body) == int(headers['Content-Length'])

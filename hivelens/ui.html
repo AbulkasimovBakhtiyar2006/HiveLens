@@ -12,23 +12,13 @@
   <link rel="stylesheet" href="/static/app.css" />
   <link rel="stylesheet" href="/static/farm.css" />
   <link rel="stylesheet" href="/static/account.css" />
-  <link rel="stylesheet" href="/static/layouts.css" />
-  <link rel="stylesheet" href="/static/layouts-next.css" />
   <script>
-    var urlLayout = new URLSearchParams(location.search).get("layout");
-    var layouts = ["focus", "registry", "panorama", "notebook", "triage", "fieldbook", "board", "atlas", "chronicle", "workbench", "folio", "dispatch"];
-    // Settings → Appearance → Layout stores "atlas" or "classic"; a ?layout= link still wins.
-    var savedLayout = null;
-    try { savedLayout = JSON.parse(localStorage.getItem("hivelens:layout")); } catch (e) {}
-    var layout = urlLayout || (savedLayout === "classic" ? "classic" : null);
-    document.documentElement.dataset.layoutPreview = layouts.includes(urlLayout) ? "true" : "false";
-    if (layout !== "classic") document.documentElement.dataset.layout = layouts.includes(layout) ? layout : "atlas";
     // Select the comparison version before styles paint. Direct links take precedence.
     var palette = new URLSearchParams(location.search).get("palette");
     if (palette !== "forest" && palette !== "honey") {
       try { palette = JSON.parse(localStorage.getItem("hivelens:palette")); } catch (e) {}
     }
-    document.documentElement.dataset.palette = palette === "forest" ? "forest" : "honey";
+    document.documentElement.dataset.palette = palette === "honey" ? "honey" : "forest"; // Forest is the default
     // Apply the saved sidebar width before first paint.
     try {
       var w = JSON.parse(localStorage.getItem("hivelens:side-w"));
@@ -40,8 +30,6 @@
   <script src="/static/yard.js" defer></script>
   <script src="/static/farm.js" defer></script>
   <script src="/static/account.js" defer></script>
-  <script src="/static/layouts.js" defer></script>
-  <script src="/static/layouts-next.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -160,7 +148,6 @@
             </div>
           </div>
 
-          <div id="atlas-demo-note" class="atlas-demo-note" hidden></div>
           <div id="overview-stats" class="kpi-strip" aria-label="Apiary summary"></div>
 
           <div id="attention" class="attention" hidden></div>
@@ -589,17 +576,10 @@
             <section class="panel">
               <header class="panel-head"><h2>Appearance</h2></header>
               <div class="panel-body appearance-settings">
-                <div><strong>Color theme</strong><p class="hint">Applied immediately and remembered in this browser.</p><p class="hint"><a href="/designs">Compare twelve interface layouts →</a></p></div>
+                <div><strong>Color theme</strong><p class="hint">Applied immediately and remembered in this browser.</p></div>
                 <div class="palette-switch" role="group" aria-label="Color theme">
-                  <button type="button" data-palette-choice="honey" aria-label="Honey yellow theme" aria-pressed="true"><span class="palette-swatch honey" aria-hidden="true"></span><span>Honey</span><span class="palette-selected" data-icon="check"></span></button>
-                  <button type="button" data-palette-choice="forest" aria-label="Forest green theme" aria-pressed="false"><span class="palette-swatch forest" aria-hidden="true"></span><span>Forest</span><span class="palette-selected" data-icon="check"></span></button>
-                </div>
-              </div>
-              <div class="panel-body appearance-settings layout-settings">
-                <div><strong>Layout</strong><p class="hint">Atlas: compact icon rail. Classic: full sidebar with farms and hives.</p></div>
-                <div class="palette-switch" role="group" aria-label="Layout">
-                  <button type="button" data-layout-choice="atlas" aria-pressed="false"><span>Atlas</span><span class="palette-selected" data-icon="check"></span></button>
-                  <button type="button" data-layout-choice="classic" aria-pressed="false"><span>Classic</span><span class="palette-selected" data-icon="check"></span></button>
+                  <button type="button" data-palette-choice="honey" aria-label="Honey yellow theme" aria-pressed="false"><span class="palette-swatch honey" aria-hidden="true"></span><span>Honey</span><span class="palette-selected" data-icon="check"></span></button>
+                  <button type="button" data-palette-choice="forest" aria-label="Forest green theme" aria-pressed="true"><span class="palette-swatch forest" aria-hidden="true"></span><span>Forest</span><span class="palette-selected" data-icon="check"></span></button>
                 </div>
               </div>
             </section>

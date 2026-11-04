@@ -585,8 +585,8 @@ class HiveLensHandler(BaseHTTPRequestHandler):
         path = parsed.path
         query = dict(urllib.parse.parse_qsl(parsed.query))
 
-        if path in ("/", "/index.html", "/designs", "/designs/"):
-            html = (UI_PATH.with_name("designs.html") if path.rstrip("/") == "/designs" else UI_PATH).read_bytes()
+        if path in ("/", "/index.html"):
+            html = UI_PATH.read_bytes()
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(html)))
@@ -601,12 +601,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                       "farm.css": "text/css; charset=utf-8", "farm.js": "text/javascript; charset=utf-8",
                       "account.css": "text/css; charset=utf-8", "account.js": "text/javascript; charset=utf-8",
                       "camera.js": "text/javascript; charset=utf-8", "comb-demo.mp4": "video/mp4",
-                      "yard.js": "text/javascript; charset=utf-8",
-                      "layouts.css": "text/css; charset=utf-8", "layouts.js": "text/javascript; charset=utf-8",
-                      "layouts-next.css": "text/css; charset=utf-8", "layouts-next.js": "text/javascript; charset=utf-8",
-                      **{f"design-previews/{key}.jpg": "image/jpeg" for key in
-                         ("focus", "registry", "panorama", "notebook", "triage", "fieldbook",
-                          "board", "atlas", "chronicle", "workbench", "folio", "dispatch")}}
+                      "yard.js": "text/javascript; charset=utf-8"}
             name = path.removeprefix("/static/")
             # Weather icons (Meteocons, MIT): only plain names inside static/weather/.
             if name.startswith("weather/") and _safe_part(name.removeprefix("weather/")) and name.endswith(".svg") \

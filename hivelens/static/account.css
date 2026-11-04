@@ -224,6 +224,3 @@
 .sidebar > * {
   flex-shrink: 0;
 }
-.layout-settings {
-  border-top: 1px solid var(--border);
-}

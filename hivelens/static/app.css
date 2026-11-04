@@ -2668,7 +2668,6 @@ dialog::backdrop {
 .report-lead { max-width: 85ch; }
 .report-lead .report-summary { margin-top: 0; }
 .claims-box > summary { cursor: pointer; }
-.nav-demo { color: var(--text-2); font-size: var(--type-xs); }
 .report details p { overflow-wrap: anywhere; }
 #timing-hint { margin-top: 10px; }
 @media (max-width: 560px) {
@@ -2741,6 +2740,10 @@ dialog::backdrop {
   --accent-text: #765400;
   --accent-soft: #fff2bf;
   --accent-border: #e8ce7c;
+  /* "Watch" must not look like the yellow brand colour: a warmer orange-brown keeps it a warning. */
+  --watch: #b4530f;
+  --watch-soft: #fbeadc;
+  --watch-border: #efc6a4;
   --spark: #a27100;
   --chart-a: #ded8c7;
   --chart-b: #a27100;
