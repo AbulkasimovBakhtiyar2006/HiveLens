@@ -32,6 +32,7 @@ def run_inspection(
 
     photos: dict[str, Image.Image] = {}
     overlays: dict[str, Image.Image] = {}
+    extras: dict[str, Image.Image] = {}  # evidence images (saved as <name>.jpg, listed in record["files"])
     detections: dict[str, list] = {}
 
     varroa_metrics = None
@@ -44,6 +45,9 @@ def run_inspection(
         varroa_metrics = res.metrics()
         photos["board"] = board
         overlays["board"] = viz.varroa_overlay(board, res)
+        extras["board_evidence"] = viz.evidence_sheet(board, res, title=f"Sticky board {date}: what was counted and why")
+        for k, sheet in enumerate(viz.muse_sheets(board, res), 1):
+            extras[f"board_muse_sheet_{k}"] = sheet
         detections["board"] = {
             "kept": [i.to_json() for i in res.kept],
             "rejected": [{**i.to_json(), "reason": why} for i, why in res.rejected],
@@ -82,4 +86,4 @@ def run_inspection(
         record.update(run.to_json())
 
     say("Saving inspection", 0.97)
-    return store.save_inspection(hive_id, record, photos, overlays)
+    return store.save_inspection(hive_id, record, photos, overlays, extras)

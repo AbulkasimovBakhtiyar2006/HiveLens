@@ -1,0 +1,155 @@
+{
+  "summary": {
+    "images": 12,
+    "experts_total": 128,
+    "sam_mae": 3.0,
+    "cv_mae": 142.17,
+    "sam_precision": 0.759,
+    "sam_recall": 0.688,
+    "sam_f1": 0.721,
+    "cv_f1": 0.113,
+    "tile": 600,
+    "refine": true,
+    "muse_vote": true,
+    "skipped_first": 8,
+    "models": [
+      "sam-3.1",
+      "muse-spark-1.3"
+    ]
+  },
+  "images": [
+    {
+      "image": "IMG_5585",
+      "experts": 14,
+      "classic_cv": 241,
+      "sam": 10,
+      "sam_rejected": 7,
+      "muse_votes_kept": 6,
+      "sam_precision": 1.0,
+      "sam_recall": 0.714,
+      "sam_f1": 0.833
+    },
+    {
+      "image": "IMG_5629",
+      "experts": 12,
+      "classic_cv": 153,
+      "sam": 14,
+      "sam_rejected": 10,
+      "muse_votes_kept": 12,
+      "sam_precision": 0.714,
+      "sam_recall": 0.833,
+      "sam_f1": 0.769
+    },
+    {
+      "image": "IMG_5630",
+      "experts": 8,
+      "classic_cv": 29,
+      "sam": 7,
+      "sam_rejected": 2,
+      "muse_votes_kept": 3,
+      "sam_precision": 0.857,
+      "sam_recall": 0.75,
+      "sam_f1": 0.8
+    },
+    {
+      "image": "IMG_5631",
+      "experts": 22,
+      "classic_cv": 89,
+      "sam": 16,
+      "sam_rejected": 10,
+      "muse_votes_kept": 11,
+      "sam_precision": 0.938,
+      "sam_recall": 0.682,
+      "sam_f1": 0.789
+    },
+    {
+      "image": "IMG_5651",
+      "experts": 2,
+      "classic_cv": 84,
+      "sam": 1,
+      "sam_rejected": 4,
+      "muse_votes_kept": 1,
+      "sam_precision": 1.0,
+      "sam_recall": 0.5,
+      "sam_f1": 0.667
+    },
+    {
+      "image": "IMG_5652",
+      "experts": 3,
+      "classic_cv": 107,
+      "sam": 4,
+      "sam_rejected": 13,
+      "muse_votes_kept": 4,
+      "sam_precision": 0.75,
+      "sam_recall": 1.0,
+      "sam_f1": 0.857
+    },
+    {
+      "image": "IMG_5654",
+      "experts": 1,
+      "classic_cv": 64,
+      "sam": 2,
+      "sam_rejected": 7,
+      "muse_votes_kept": 1,
+      "sam_precision": 0.5,
+      "sam_recall": 1.0,
+      "sam_f1": 0.667
+    },
+    {
+      "image": "IMG_5674",
+      "experts": 16,
+      "classic_cv": 80,
+      "sam": 13,
+      "sam_rejected": 8,
+      "muse_votes_kept": 7,
+      "sam_precision": 0.769,
+      "sam_recall": 0.625,
+      "sam_f1": 0.69
+    },
+    {
+      "image": "IMG_5675",
+      "experts": 7,
+      "classic_cv": 236,
+      "sam": 13,
+      "sam_rejected": 8,
+      "muse_votes_kept": 8,
+      "sam_precision": 0.462,
+      "sam_recall": 0.857,
+      "sam_f1": 0.6
+    },
+    {
+      "image": "IMG_5676",
+      "experts": 14,
+      "classic_cv": 85,
+      "sam": 10,
+      "sam_rejected": 8,
+      "muse_votes_kept": 5,
+      "sam_precision": 0.9,
+      "sam_recall": 0.643,
+      "sam_f1": 0.75
+    },
+    {
+      "image": "IMG_5677",
+      "experts": 7,
+      "classic_cv": 179,
+      "sam": 9,
+      "sam_rejected": 9,
+      "muse_votes_kept": 7,
+      "sam_precision": 0.667,
+      "sam_recall": 0.857,
+      "sam_f1": 0.75
+    },
+    {
+      "image": "IMG_5699",
+      "experts": 22,
+      "classic_cv": 487,
+      "sam": 17,
+      "sam_rejected": 19,
+      "muse_votes_kept": 11,
+      "sam_precision": 0.647,
+      "sam_recall": 0.5,
+      "sam_f1": 0.564
+    }
+  ],
+  "note": "Ground truth: expert boxes from Divas\u00f3n et al. 2023 (Zenodo 10.5281/zenodo.10231845, CC BY 4.0). Zero-shot: SAM 3.1 with the prompt 'varroa mite' and Muse Spark votes on unexplained dark spots; no training on this dataset. The first 8 boards were used for development and are excluded."
+}

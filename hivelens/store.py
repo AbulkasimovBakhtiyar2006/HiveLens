@@ -62,7 +62,8 @@ def history_before(hive_id: str, date: str) -> list[dict]:
     ]
 
 
-def save_inspection(hive_id: str, record: dict, photos: dict[str, Image.Image], overlays: dict[str, Image.Image]) -> dict:
+def save_inspection(hive_id: str, record: dict, photos: dict[str, Image.Image], overlays: dict[str, Image.Image],
+                    extras: dict[str, Image.Image] | None = None) -> dict:
     insp_id = record.get("id") or f"{record['date']}-{datetime.now().strftime('%H%M%S')}"
     record["id"] = insp_id
     folder = _hive_dir(hive_id) / insp_id
@@ -76,6 +77,10 @@ def save_inspection(hive_id: str, record: dict, photos: dict[str, Image.Image], 
         path = folder / f"{name}_overlay.jpg"
         img.convert("RGB").save(path, quality=88)
         files[f"{name}_overlay"] = path.name
+    for name, img in (extras or {}).items():
+        path = folder / f"{name}.jpg"
+        img.convert("RGB").save(path, quality=90)
+        files[name] = path.name
     record["files"] = files
     (folder / "inspection.json").write_text(json.dumps(record, indent=2, default=str))
     return record

@@ -1,0 +1,74 @@
+{
+  "models": {
+    "segmentation": "sam-3.1",
+    "reasoning": "muse-spark-1.3"
+  },
+  "board": {
+    "name": "IMG_5582",
+    "expert_mites": 21,
+    "naive_sam_found": 0,
+    "naive_muse_count": 24,
+    "naive_muse_raw": "{\"count\": 24}",
+    "hivelens_counted": 20,
+    "hivelens_from_sam": 6,
+    "hivelens_from_muse_vote": 14,
+    "spots_shown_to_muse": 194,
+    "muse_said_mite": 19,
+    "rejected": 9,
+    "rejected_by_reason": {
+      "too small for a mite": 3,
+      "too large for a mite": 1,
+      "no dark body under the detection": 5
+    }
+  },
+  "frames": [
+    {
+      "name": "A_slice_of_the_brood_nest.jpg",
+      "naive_sam_pct_of_comb": {
+        "brood": 85.6,
+        "honey": 99.4
+      },
+      "hivelens_pct": {
+        "honey": 52.3,
+        "brood": 32.6,
+        "larvae": 0.0,
+        "pollen": 0.0,
+        "empty": 14.4,
+        "bees": 0.7
+      },
+      "bees_counted": 86
+    },
+    {
+      "name": "Cadre_de_corps_de_ruche.jpg",
+      "naive_sam_pct_of_comb": {
+        "brood": 0.0,
+        "honey": 98.7
+      },
+      "hivelens_pct": {
+        "honey": 2.9,
+        "brood": 22.3,
+        "larvae": 0.0,
+        "pollen": 0.0,
+        "empty": 64.6,
+        "bees": 10.2
+      },
+      "bees_counted": 61
+    },
+    {
+      "name": "Frame_from_hive_of_honey_bee_apis_mellifera_.jpg",
+      "naive_sam_pct_of_comb": {
+        "brood": 0.0,
+        "honey": 67.1
+      },
+      "hivelens_pct": {
+        "honey": 0.0,
+        "brood": 26.4,
+        "larvae": 0.0,
+        "pollen": 8.4,
+        "empty": 60.6,
+        "bees": 4.6
+      },
+      "bees_counted": 91
+    }
+  ]
+}

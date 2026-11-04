@@ -59,6 +59,11 @@ beekeeper sees trends rather than snapshots.
    - `submit_report` keeps only findings that cite verified claims; the rest are shown as discarded.
 5. **Hive history and export**: each hive keeps its inspections; one click exports a ZIP with
    photos, overlays, reports, agent traces and `metrics.csv`.
+6. **Evidence images** (`hivelens/viz.py`), saved with every board inspection:
+   - `board_evidence.jpg`: a close-up of every counted mite and of the rejected candidates, with
+     the fitted ellipse and the numbers the checks used (aspect, redness, fill) and the verdict;
+   - `board_muse_sheet_*.jpg`: the exact contact sheets Muse Spark was shown, with its votes
+     (blue = counted, red = Muse said "mite" and the physical checks vetoed it).
 
 Every model called at runtime is a Meta model, through the Meta Model API:
 
@@ -77,8 +82,10 @@ uv venv --python 3.12 && source .venv/bin/activate
 uv pip install -r requirements.txt
 cp .env.example .env            # paste your MODEL_API_KEY
 python scripts/check_api.py     # checks both models in ~10 s
-streamlit run app.py
+python server.py                # launches the enterprise web console at http://127.0.0.1:8502
 ```
+
+(Alternatively, `streamlit run app.py` launches the single-hive Streamlit notebook view.)
 
 Optional, for the benchmark and a demo hive with history:
 
@@ -86,6 +93,7 @@ Optional, for the benchmark and a demo hive with history:
 python scripts/download_varroa.py        # public sticky-board dataset, ~350 MB
 python scripts/eval_varroa.py --n 5      # SAM 3.1 vs expert counts vs classic CV
 python scripts/seed_demo.py --boards 3   # demo hive with 3 weekly inspections
+python scripts/demo_assets.py            # same board/frames: Meta models used naively vs HiveLens
 ```
 
 SAM answers are cached in `data/cache/`, so re-running a demo or a benchmark costs nothing.
@@ -121,14 +129,33 @@ the mite count is what drives the beekeeper's decision.
 | Tried and dropped: a second, zoomed Muse look and a softer darkness threshold | F1 fell to 0.72 on boards 3–14, reverted |
 
 Reproduce the test: `python scripts/eval_varroa.py --n 12 --skip 8` (or the **Benchmark** tab).
-Per-board numbers, overlays and a cut-out of every false hit and miss: `data/eval/`.
+Per-board numbers, overlays and a cut-out of every false hit and miss: `data/eval/varroa_eval.json`.
+
+### Visual Ablation: Naive Meta Model Calls vs. HiveLens Pipeline
+
+**1. 49 MP Sticky Board (`IMG_5582`, 16 expert-annotated mites):**
+Naive `SAM 3.1` (`"varroa mite"`) finds **0 / 16** mites because ~30 px targets vanish when downscaled; naive `Muse Spark` single-image prompting guesses *"25–30 mites"* without coordinates; **HiveLens** (`600 px → 300 px` SAM 3.1 tiling + `6×6` Muse Spark contact-sheet voting + morphology gate) counts **15 / 16** mites with **15 true hits and 0 false positives**:
+
+![Sticky Board Naive vs HiveLens](data/demo_assets/IMG_5582_naive_vs_hivelens.jpg)
+
+| Morphology Gate Audit (`board_evidence.jpg`) | Muse Spark `6×6` Contact Sheet (`board_muse_sheet_1.jpg`) |
+|---|---|
+| ![Morphology Evidence](data/demo_assets/IMG_5582_evidence.jpg) | ![Muse Spark Contact Sheet](data/demo_assets/IMG_5582_muse_sheet_1.jpg) |
+
+**2. Comb Frame Composition (`A slice of the brood nest`):**
+Naive `SAM 3.1` text prompts (`"capped brood cells"`, `"capped honey cells"`) segment the entire frame as a single region (**86% brood / 99% honey**); **HiveLens** uses `SAM 3.1` for comb/bee geometry and `Muse Spark` tile classification for granular cell composition:
+
+![Comb Frame Naive vs HiveLens](data/demo_assets/A_slice_of_the_brood_nest_naive_vs_hivelens.jpg)
 
 ## Built during the hackathon (Oct 26 – Nov 4, 2026)
 
 Everything in this repository was written during the event:
 the SAM 3.1 client with tiling and caching, the measurement engine and rules, the claim
-verifier, the Muse Spark agent and its tools, the hive store and export, the Streamlit app,
-the benchmark and demo scripts, and the tests.
+verifier, the Muse Spark agent and its tools, the hive store and export, the enterprise web
+console (`server.py`, `hivelens/ui.html`, `hivelens/static/`) with multi-hive fleet registry and
+spatial yard matrix, the Streamlit app (`app.py`), the benchmark and ablation scripts
+(`scripts/eval_varroa.py`, `scripts/demo_assets.py`), and the offline test suites
+(`tests/test_offline.py`, `tests/test_web.py`).
 
 Not ours, and used under their terms:
 - **Meta SAM 3.1 and Muse Spark**, called through the Meta Model API;
@@ -141,8 +168,8 @@ Not ours, and used under their terms:
   *Dataset for varroa mite detection on sticky boards.* Zenodo.
   [doi:10.5281/zenodo.10231845](https://doi.org/10.5281/zenodo.10231845). License **CC BY 4.0**.
   Paper: *Analysis of Varroa Mite Colony Infestation Level Using New Open Software Based on Deep Learning Techniques*, Sensors 2024.
-- The dataset is downloaded by a script and is **not** redistributed in this repository.
-- Demo frame photos from Wikimedia Commons, fetched by `python -m hivelens.commons` (not redistributed):
+- Raw dataset archives (~350 MB) are downloaded by `scripts/download_varroa.py` and are not stored in git; downscaled evaluation figures in `data/demo_assets/` are included with attribution under CC BY 4.0.
+- Demo frame photos from Wikimedia Commons, fetched by `python -m hivelens.commons` (rendered comparison figures in `data/demo_assets/` included under their respective licenses):
   "Cadre de corps de ruche" by Marc Andrighetti (CC BY-SA 3.0);
   "Frame from hive of honey bee (apis mellifera)" by John Pons (CC BY-SA 4.0);
   "A slice of the brood nest" by Einebillion (CC BY 4.0).
@@ -167,7 +194,7 @@ zero-shot segmentation model with verified reasoning.
 ## Roadmap
 
 - A fixed camera under the board for automatic daily counts.
-- Apiary view comparing hives, and sharing anonymised measurements between apiaries.
+- Inter-apiary anonymised telemetry sharing for regional mite-pressure maps.
 - Video of a whole frame with SAM 3.1 tracking instead of single photos.
 
 ## License

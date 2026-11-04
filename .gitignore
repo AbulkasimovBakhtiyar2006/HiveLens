@@ -1,5 +1,10 @@
 .env
-data/
+data/*
+!data/demo_assets/
+!data/demo_assets/**
+!data/eval/
+data/eval/*
+!data/eval/varroa_eval.json
 __pycache__/
 *.pyc
 .pytest_cache/

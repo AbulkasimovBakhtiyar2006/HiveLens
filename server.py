@@ -35,6 +35,8 @@ Image.MAX_IMAGE_PIXELS = None  # sticky-board photos are ~49 MP
 PORT = int(config.os.getenv("HIVELENS_PORT", "8502"))
 HOST = "127.0.0.1"
 UI_PATH = Path(__file__).resolve().parent / "hivelens" / "ui.html"
+STATIC_DIR = UI_PATH.parent / "static"
+MAX_REQUEST_BYTES = 85 * 1024 * 1024  # 60 MB of photos after base64 encoding
 
 # ── In-memory caches & live job store ─────────────────────────────────────────
 
@@ -135,6 +137,7 @@ def build_apiary_overview() -> dict:
             "x_m": round(x_m, 2),
             "y_m": round(y_m, 2),
             "inspection_count": len(insps),
+            "synthetic": bool(latest and latest.get("synthetic")),
             "latest_date": latest.get("date") if latest else None,
             "overall": overall,
             "levels": status.get("levels", {}),
@@ -423,6 +426,38 @@ def _run_benchmark_job(job_id: str, payload: dict) -> None:
 
 # ── HTTP Request Handler ──────────────────────────────────────────────────────
 
+def _validate_inspection_payload(body: dict) -> None:
+    """Reject unusable jobs before spawning threads or making paid model calls."""
+    hive_id = body.get("hive_id", "")
+    if not isinstance(hive_id, str) or not _safe_part(hive_id) or not (config.HIVES_DIR / hive_id / "hive.json").is_file():
+        raise ValueError("Choose an existing hive before starting an inspection.")
+    try:
+        date.fromisoformat(body.get("date", ""))
+    except (ValueError, TypeError):
+        raise ValueError("Choose a valid inspection date.") from None
+    days = float(body.get("days_on_board", 3))
+    frames = float(body.get("frames_in_hive", 10))
+    if not math.isfinite(days) or not 0.5 <= days <= 30:
+        raise ValueError("Board duration must be between 0.5 and 30 days.")
+    if not math.isfinite(frames) or not frames.is_integer() or not 1 <= frames <= 40:
+        raise ValueError("Frames in hive must be a whole number between 1 and 40.")
+    photos = body.get("frames_b64") or []
+    samples = body.get("frame_samples") or []
+    if not isinstance(photos, list) or not isinstance(samples, list):
+        raise ValueError("Frame photos and samples must be lists.")
+    if len(photos) + len(samples) > 8:
+        raise ValueError("Choose up to 8 frame photos per inspection.")
+    if not (body.get("board_b64") or body.get("board_sample") or photos or samples):
+        raise ValueError("Add at least one sticky-board or frame photo.")
+    available = get_samples()
+    if body.get("board_sample") and body["board_sample"] not in {b["name"] for b in available["boards"]}:
+        raise ValueError("The selected board sample is no longer available.")
+    if any(name not in {f["name"] for f in available["frames"]} for name in samples):
+        raise ValueError("A selected frame sample is no longer available.")
+    if not isinstance(body.get("note", ""), str) or len(body.get("note", "")) > 4000:
+        raise ValueError("Keep field notes below 4,000 characters.")
+
+
 class HiveLensHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -441,9 +476,15 @@ class HiveLensHandler(BaseHTTPRequestHandler):
 
     def _read_json(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
+        if length > MAX_REQUEST_BYTES:
+            self.close_connection = True
+            raise ValueError("Upload is too large. Keep photos below 60 MB total.")
         if length <= 0:
             return {}
-        return json.loads(self.rfile.read(length).decode("utf-8"))
+        body = json.loads(self.rfile.read(length).decode("utf-8"))
+        if not isinstance(body, dict):
+            raise ValueError("Expected a JSON object")
+        return body
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlsplit(self.path)
@@ -460,9 +501,29 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             self.wfile.write(html)
             return
 
+        if path.startswith("/static/"):
+            # Explicit allowlist: never expose the data directory or local config.
+            assets = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "mark.svg": "image/svg+xml"}
+            name = path.removeprefix("/static/")
+            if name not in assets:
+                self._send_json({"error": "not found"}, 404)
+                return
+            content = (STATIC_DIR / name).read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", assets[name])
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(content)
+            return
+
         if path == "/api/state":
             eval_path = config.DATA_DIR / "eval" / "varroa_eval.json"
             bench = json.loads(eval_path.read_text()) if eval_path.exists() else None
+            demo_dir = config.DATA_DIR / "demo_assets"
+            demo_numbers = json.loads((demo_dir / "numbers.json").read_text()) if (demo_dir / "numbers.json").exists() else None
+            demo_images = sorted(p.name for p in demo_dir.glob("*.jpg")) if demo_dir.exists() else []
             samples = get_samples()
             self._send_json({
                 "version": __version__,
@@ -484,7 +545,21 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                     "frames": [{"name": f["name"]} for f in samples["frames"]],
                 },
                 "benchmark": bench,
+                "demo_assets": {"numbers": demo_numbers, "images": demo_images},
             })
+            return
+
+        if path.startswith("/api/demo_asset/"):
+            name = urllib.parse.unquote(path.removeprefix("/api/demo_asset/"))
+            demo_dir = config.DATA_DIR / "demo_assets"
+            fpath = demo_dir / name
+            if not _safe_part(name) or not _inside(fpath, demo_dir) or fpath.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
+                self._send_json({"error": "not allowed"}, 403)
+                return
+            if not fpath.exists():
+                self._send_json({"error": "not found"}, 404)
+                return
+            self._serve_image(fpath, int(query.get("max_side", "0")))
             return
 
         if path.startswith("/api/hive/"):
@@ -583,7 +658,11 @@ class HiveLensHandler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")  # no Content-Length: the stream ends when the socket closes
         self.end_headers()
 
-        cursor = 0
+        try:
+            cursor = max(0, int(self.headers.get("Last-Event-ID", "0")))
+        except ValueError:
+            cursor = 0
+        heartbeat = time.monotonic()
         while True:
             with _JOBS_LOCK:
                 job = _JOBS.get(job_id)
@@ -592,14 +671,23 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                     self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
                     self.wfile.flush()
                     return
+                cursor = min(cursor, len(job["events"]))
+                start_cursor = cursor
                 events = job["events"][cursor:]
                 cursor = len(job["events"])
                 status = job["status"]
 
-            for ev in events:
-                data = json.dumps(ev, default=str)
-                self.wfile.write(f"data: {data}\n\n".encode("utf-8"))
-                self.wfile.flush()
+            try:
+                for event_id, ev in enumerate(events, start_cursor + 1):
+                    data = json.dumps(ev, default=str)
+                    self.wfile.write(f"id: {event_id}\ndata: {data}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+                if time.monotonic() - heartbeat >= 15:
+                    self.wfile.write(b": heartbeat\n\n")
+                    self.wfile.flush()
+                    heartbeat = time.monotonic()
+            except (BrokenPipeError, ConnectionResetError):
+                return  # Closing a tab must not stop the background inspection.
 
             if status in ("done", "error") and not events:
                 return
@@ -643,6 +731,11 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/inspect":
+            try:
+                _validate_inspection_payload(body)
+            except (ValueError, TypeError) as exc:
+                self._send_json({"error": str(exc)}, 400)
+                return
             if not config.has_api_key():
                 self._send_json({"error": "No MODEL_API_KEY configured in .env"}, 400)
                 return
@@ -655,6 +748,14 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/benchmark":
+            try:
+                n_boards = int(body.get("n_boards", 12))
+                skip = int(body.get("skip", 8))
+                if not 1 <= n_boards <= 30 or skip < 0:
+                    raise ValueError
+            except (ValueError, TypeError):
+                self._send_json({"error": "Choose 1–30 boards and a non-negative starting offset."}, 400)
+                return
             if not config.has_api_key():
                 self._send_json({"error": "No MODEL_API_KEY configured in .env"}, 400)
                 return

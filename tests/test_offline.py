@@ -198,7 +198,7 @@ def test_pipeline_end_to_end(monkeypatch):
     assert rec["status"]["levels"]["varroa"] == "watch"
     assert [c["verdict"] for c in rec["claims"]] == ["verified", "rejected"]
     assert rec["report"]["findings"][0]["claim_ids"] == ["c1"]
-    assert {"board_overlay", "frame_1_overlay", "board", "frame_1"} <= set(rec["files"])
+    assert {"board_overlay", "frame_1_overlay", "board", "frame_1", "board_evidence"} <= set(rec["files"])
 
 
 def test_varroa_refine_pass_finds_missed_mite(monkeypatch):
@@ -266,3 +266,33 @@ def test_shape_checks_reject_rods_and_crumbs():
     assert oval["aspect"] < measure.MITE_MAX_ASPECT and oval["fill"] > measure.MITE_MIN_FILL
     assert rod["aspect"] > measure.MITE_MAX_ASPECT
     assert crumb["fill"] < measure.MITE_MIN_FILL
+
+
+def test_evidence_and_muse_sheets(monkeypatch):
+    """The evidence images redraw what the engine decided: Muse's own sheet with its votes and the vetoes."""
+    from PIL import ImageDraw
+
+    from hivelens import viz, vote
+
+    board = Image.new("RGB", (1200, 900), (225, 228, 240))
+    d = ImageDraw.Draw(board)
+    d.ellipse((702, 401, 712, 409), fill=(80, 35, 30))   # mite
+    d.ellipse((300, 300, 310, 308), fill=(30, 45, 40))   # debris (darkest, so tile 1)
+    d.ellipse((900, 600, 910, 608), fill=(85, 38, 32))   # mite Muse does not vote for
+    monkeypatch.setattr(sam, "raw_segment", lambda img, concept, use_cache=True: "")
+    monkeypatch.setattr(vote, "_ask", lambda sheet: [1, 2])
+    res = measure.measure_varroa(board, 1)
+    assert len(res.vote_centers) == 3 and res.vote_yes == [0, 1]
+
+    sheets = viz.muse_sheets(board, res, scale=2)
+    assert len(sheets) == 1
+    t, top = vote.TILE * 2, 70
+    px = sheets[0].getpixel
+    assert px((4, top + t // 2)) == viz.RED            # tile 1: Muse said mite, the checks vetoed it
+    assert px((t + 4, top + t // 2)) == viz.BLUE       # tile 2: Muse said mite, counted
+    assert px((2 * t + 4, top + t // 2)) != viz.BLUE   # tile 3: Muse said no
+
+    ev = viz.evidence_sheet(board, res, cols=4)
+    assert ev.size[0] == 8 + 4 * (224 + 8)
+    body = measure.mite_body(np.asarray(board), res.kept[0].center)
+    assert body["ellipse"] is not None and abs(body["ellipse"][0][0] - 707) < 3

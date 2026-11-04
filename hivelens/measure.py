@@ -30,6 +30,9 @@ class VarroaResult:
     kept: list[Instance] = field(default_factory=list)
     rejected: list[tuple[Instance, str]] = field(default_factory=list)
     median_area_px: float = 0.0
+    # what Muse Spark was shown (spot centres, in contact-sheet order) and the indices it voted "mite"
+    vote_centers: list[tuple[float, float]] = field(default_factory=list)
+    vote_yes: list[int] = field(default_factory=list)
 
     def metrics(self) -> dict:
         return {
@@ -73,15 +76,17 @@ def mite_body(board_arr: np.ndarray, center: tuple[float, float]) -> dict | None
     body = a[mask]
     bg = np.median(a[~dark], axis=0)
     redness = float((body[:, 0] - body[:, 1]).mean() - (bg[0] - bg[1]))
-    aspect, fill = 9.0, 0.0
+    aspect, fill, ellipse = 9.0, 0.0, None
     cnts, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     if cnts:
         cnt = max(cnts, key=cv2.contourArea)
         if len(cnt) >= 5:
-            (_, _), (ax1, ax2), _ = cv2.fitEllipse(cnt)
+            (ex, ey), (ax1, ax2), ang = cv2.fitEllipse(cnt)
             aspect = max(ax1, ax2) / max(1e-3, min(ax1, ax2))
             fill = cv2.contourArea(cnt) / (np.pi * ax1 * ax2 / 4 + 1e-6)
-    return {"area_frac": float(stats[k, 4]) / (W * W), "redness": redness, "aspect": aspect, "fill": fill}
+            ellipse = ((float(ex + x0), float(ey + y0)), (float(ax1), float(ax2)), float(ang))  # board px
+    return {"area_frac": float(stats[k, 4]) / (W * W), "redness": redness, "aspect": aspect, "fill": fill,
+            "ellipse": ellipse}
 
 
 def filter_mites(
@@ -177,6 +182,8 @@ def measure_varroa(
                                   progress=lambda i, n: say(n_grid + i, n_grid + n))
         found = sam.nms(found + extra, 0.3)
 
+    centers: list[tuple[float, float]] = []
+    voted: list[int] = []
     if muse_vote:
         from . import vote
 
@@ -190,7 +197,7 @@ def measure_varroa(
     kept, rejected = filter_mites(found, board)
     days = max(float(days_on_board or 1), 0.25)
     med = float(np.median([i.area_px for i in kept])) if kept else 0.0
-    return VarroaResult(len(kept), days, len(kept) / days, kept, rejected, med)
+    return VarroaResult(len(kept), days, len(kept) / days, kept, rejected, med, centers, voted)
 
 
 MUSE_CONCEPT = "varroa mite (Muse Spark vote)"
