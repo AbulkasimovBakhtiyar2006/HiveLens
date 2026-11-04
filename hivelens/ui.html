@@ -82,7 +82,6 @@
         <span class="profile-text"><strong id="profile-name">Your profile</strong><small id="profile-sub">Profile and settings</small></span>
       </a>
 
-      <form id="signout" action="/logout" method="post" hidden><button class="link-btn" type="submit">Sign out</button></form>
       <!-- Filled by app.js; kept out of view on purpose. -->
       <span id="api-state" hidden></span>
       <span id="models" hidden></span>
@@ -607,6 +606,7 @@
               <h1 id="settings-title">Settings</h1>
               <p class="muted">Appearance, profile and analysis settings.</p>
             </div>
+            <form id="signout" action="/logout" method="post" hidden><button class="btn" type="submit">Sign out</button></form>
           </div>
 
           <form id="settings-form" class="settings-layout" novalidate>
