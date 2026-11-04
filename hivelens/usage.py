@@ -11,29 +11,27 @@ from __future__ import annotations
 
 import json
 import threading
+from contextvars import ContextVar
 import time
 from datetime import date, datetime, timedelta
 
-from . import config
+from . import config, workspace
 
 _lock = threading.Lock()
-_context: dict = {}
+_context: ContextVar[dict] = ContextVar('usage_context', default={})
 
 
 def _log_path():
-    return config.DATA_DIR / "usage.jsonl"
+    return workspace.data_dir() / "usage.jsonl"
 
 
 def set_context(**fields) -> None:
-    """Tags the following calls with a job (job_id, kind, hive_id, label). Shared across worker threads."""
-    with _lock:
-        _context.clear()
-        _context.update({k: v for k, v in fields.items() if v is not None})
+    """Tags the following calls with a job (job_id, kind, hive_id, label). Inherited explicitly by worker threads."""
+    _context.set({k: v for k, v in fields.items() if v is not None})
 
 
 def clear_context() -> None:
-    with _lock:
-        _context.clear()
+    _context.set({})
 
 
 def _num(obj, *names) -> int:
@@ -64,7 +62,8 @@ def record(model: str, kind: str, usage_obj=None, ok: bool = True) -> dict:
         "ok": ok,
     }
     with _lock:
-        entry.update(_context)
+        entry.update(_context.get())
+        entry["workspace"] = workspace.current()
         path = _log_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as fh:

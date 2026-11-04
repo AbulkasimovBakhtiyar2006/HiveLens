@@ -16,13 +16,14 @@
   <link rel="stylesheet" href="/static/farm.css" />
   <link rel="stylesheet" href="/static/account.css" />
   <link rel="stylesheet" href="/static/tour.css" />
+  <link rel="stylesheet" href="/static/reference.css" />
   <script>
     // Select the comparison version before styles paint. Direct links take precedence.
     var palette = new URLSearchParams(location.search).get("palette");
     if (palette !== "forest" && palette !== "honey") {
       try { palette = JSON.parse(localStorage.getItem("hivelens:palette")); } catch (e) {}
     }
-    document.documentElement.dataset.palette = palette === "honey" ? "honey" : "forest"; // Forest is the default
+    document.documentElement.dataset.palette = palette === "forest" ? "forest" : "honey";
     // Apply the saved sidebar width before first paint.
     try {
       var w = JSON.parse(localStorage.getItem("hivelens:side-w"));
@@ -35,6 +36,7 @@
   <script src="/static/farm.js" defer></script>
   <script src="/static/account.js" defer></script>
   <script src="/static/tour.js" defer></script>
+  <script src="/static/reference.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -61,6 +63,8 @@
         <a href="#history" data-nav="history"><span data-icon="records"></span><span>Hive records</span></a>
         <span class="nav-divider" aria-hidden="true"></span>
         <a href="#benchmark" data-nav="benchmark"><span data-icon="chart"></span><span>Benchmark</span></a>
+        <a href="#research" data-nav="research"><span data-icon="activity"></span><span>Field dataset</span></a>
+        <a href="#guide" data-nav="guide"><span data-icon="microscope"></span><span>Mite guide</span></a>
         <a href="#method" data-nav="method"><span data-icon="book"></span><span>How it works</span></a>
         <a href="#usage" data-nav="usage"><span data-icon="wallet"></span><span>Usage and cost</span></a>
       </nav>
@@ -94,6 +98,10 @@
       </header>
 
       <main id="main" class="container" tabindex="-1">
+        <div class="workspace-mode-bar">
+          <div><strong id="workspace-label">Demo workspace</strong><p id="workspace-description">Sample analyses and simulated histories.</p></div>
+          <label class="workspace-mode-control"><span class="sr-only">Workspace mode</span><span class="research-select"><select id="workspace-mode"><option value="demo">Demo</option><option value="production">Production</option></select><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m7 10 5 5 5-5"/></svg></span></label>
+        </div>
         <div id="load-error" class="alert danger" hidden>
           <span id="load-error-text"></span>
           <button class="btn sm" id="retry-load" type="button">Try again</button>
@@ -107,7 +115,7 @@
               <p class="welcome-description">Count varroa mites. Assess honey and brood. Turn your hive photos into measurements you can see and check.</p>
               <div class="welcome-actions">
                 <button id="welcome-example" class="btn primary lg" type="button" disabled>Explore a saved analysis</button>
-                <a class="btn lg" href="#inspect">Try your own photos</a>
+                <a id="welcome-own" class="btn lg" href="#inspect">Try your own photos</a>
               </div>
               <p id="welcome-example-hint" class="hint" role="status">Finding a saved example…</p>
               <a class="welcome-skip" href="#overview">Go to your apiary <span aria-hidden="true">→</span></a>
@@ -122,20 +130,39 @@
           <section class="welcome-guide" aria-labelledby="welcome-guide-title">
             <h2 id="welcome-guide-title">One inspection, three steps</h2>
             <ol class="welcome-steps">
-              <li><span class="welcome-step-number">01</span><h3>Bring a photo</h3><p>A sticky board for mite counts, or a frame for honey and brood. Use your own photos or try a sample.</p></li>
+              <li><span class="welcome-step-number">01</span><h3>Bring a photo</h3><p id="welcome-photo-step">A sticky board for mite counts, or a frame for honey and brood. Use your own photos or try a sample.</p></li>
               <li><span class="welcome-step-number">02</span><h3>See the measurements</h3><p>Choose a hive and run an inspection. Check the marked-up photo alongside the results.</p></li>
               <li><span class="welcome-step-number">03</span><h3>Plan your next step</h3><p>Review the suggested actions and follow changes over time. Every inspection stays in the hive’s history.</p></li>
             </ol>
           </section>
 
           <div class="welcome-context">
-            <div><h2>Take a look around.</h2><p>Explore the apiary, check the benchmark or see how the analysis works.</p><p class="hint"><b>Demo</b> hives use simulated readings. <b>Measured</b> records come from photo analyses. Use photo estimates alongside an inspection of the colony.</p></div>
+            <div><h2>Take a look around.</h2><p>Explore the apiary, check the benchmark or see how the analysis works.</p><p class="hint" id="welcome-data-note"><b>Demo</b> hives use simulated readings. <b>Measured</b> records come from photo analyses. Use photo estimates alongside an inspection of the colony.</p></div>
             <nav class="welcome-destinations" aria-label="Explore HiveLens">
+              <a href="#research"><strong>Real field histories <span aria-hidden="true">↗</span></strong><span>57 study hives · Denmark and Portugal · EFSA MUST-B</span></a>
               <a href="#overview"><strong>Apiary overview <span aria-hidden="true">↗</span></strong><span>Hives, inspection status and yard maps</span></a>
               <a href="#benchmark"><strong>Benchmark <span aria-hidden="true">↗</span></strong><span>See how mite counts compare with expert annotations</span></a>
               <a href="#method"><strong>How it works <span aria-hidden="true">↗</span></strong><span>Understand the models, checks and limitations</span></a>
             </nav>
           </div>
+        </section>
+
+        <section id="view-research" class="view" hidden aria-labelledby="research-title">
+          <div class="page-head"><div><p class="reference-eyebrow">Published field observations · 2019–2020</p><h1 id="research-title">Real hives. Recorded over time.</h1><p class="muted">Explore original study hive IDs, colony weight and Varroa samples from Denmark and Portugal.</p></div></div>
+          <div class="reference-context"><strong>EFSA MUST-B · Historical research archive</strong><p>Collected by the study team, not by HiveLens. These are real field observations, separate from simulated demo hives and our photo analyses. They do not demonstrate a HiveLens deployment or validate the detector.</p><div class="reference-links"><a href="https://zenodo.org/records/5148318" target="_blank" rel="noopener">Original dataset ↗</a><a href="https://doi.org/10.2903/sp.efsa.2021.EN-6695" target="_blank" rel="noopener">Scientific report ↗</a></div></div>
+          <div id="research-content" aria-live="polite"><p class="muted">Loading field observations…</p></div>
+        </section>
+
+        <section id="view-guide" class="view" hidden aria-labelledby="guide-title">
+          <div class="page-head"><div><p class="reference-eyebrow">A field reference</p><h1 id="guide-title">Know which mite you’re looking for.</h1><p class="muted">Different parasites need different checks. Location is a clue, not a diagnosis.</p></div></div>
+          <div class="reference-context"><strong>What HiveLens can assess</strong><p>Our photo workflow counts Varroa-like mites on sticky boards. The benchmark covers those boards only. It does not identify mite species, rule out infestation, or detect tracheal mites. Keep the board’s exposure time with every count.</p></div>
+          <div class="mite-grid">
+            <article class="panel mite-card"><div class="mite-card-head"><span class="tag">Board-count workflow</span><span>01</span></div><h2><i>Varroa destructor</i></h2><p class="muted">The main target of this project</p><dl><dt>Where</dt><dd>Widespread internationally in managed honey bees. Check your local authority for current regional status.</dd><dt>In the hive</dt><dd>On adult bees and in brood cells. A small, flattened, reddish-brown mite.</dd><dt>What to check</dt><dd>Count fallen mites on a sticky board over a known interval. A count per day is not the same as mites per 100 bees from a wash.</dd></dl><a href="https://www.agriculture.gov.au/pests-diseases-weeds/bees/honeybees-faqs" target="_blank" rel="noopener">DAFF: Varroa biology ↗</a></article>
+            <article class="panel mite-card"><div class="mite-card-head"><span class="tag">Species identification unsupported</span><span>02</span></div><h2><i>Varroa jacobsoni</i></h2><p class="muted">A related species with a different host history</p><dl><dt>Where</dt><dd>Associated with Asian honey bees; a host shift to western honey bees was documented in Papua New Guinea in 2008.</dd><dt>In the hive</dt><dd>Another Varroa species. A photo count cannot reliably distinguish it from <i>V. destructor</i>.</dd><dt>What to check</dt><dd>Ask a bee-health specialist for species confirmation when an unusual infestation is suspected.</dd></dl><a href="https://www.agriculture.gov.au/pests-diseases-weeds/bees/honeybees-faqs" target="_blank" rel="noopener">DAFF: species and host shift ↗</a></article>
+            <article class="panel mite-card"><div class="mite-card-head"><span class="tag">Detection unsupported</span><span>03</span></div><h2><i>Tropilaelaps</i> mites</h2><p class="muted"><i>T. mercedesae</i> and <i>T. clareae</i></p><dl><dt>Where</dt><dd>Historically associated with Asia. Reports beyond the traditional range include the Caucasus; distribution is changing.</dd><dt>In the hive</dt><dd>External parasites of brood. A Varroa-specific image filter is not a suitable test for these mites.</dd><dt>What to check</dt><dd>Seek specialist identification and follow local reporting guidance. A negative HiveLens result cannot exclude them.</dd></dl><a href="https://sitesv2.anses.fr/en/minisite/abeilles/geographical-spread-exotic-mite-tropilaelaps-spp-new-reports-caucasus-0" target="_blank" rel="noopener">EU reference laboratory: spread ↗</a></article>
+            <article class="panel mite-card"><div class="mite-card-head"><span class="tag">Microscopy required</span><span>04</span></div><h2><i>Acarapis woodi</i></h2><p class="muted">The honey bee tracheal mite</p><dl><dt>Where</dt><dd>Reported in multiple beekeeping regions; consult local bee-health surveillance for country status.</dd><dt>In the hive</dt><dd>A microscopic parasite inside the respiratory tubes of adult bees.</dd><dt>What to check</dt><dd>Diagnosis requires examination of the tracheae. It cannot be made from a normal frame or sticky-board photograph.</dd></dl><a href="https://www.nationalbeeunit.com/assets/PDFs/3_Resources_for_beekeepers/Fact_Sheets/Fact_02_Acarine_tracheal_mites_v2.pdf" target="_blank" rel="noopener">National Bee Unit: tracheal mites ↗</a></article>
+          </div>
+          <div class="reference-context"><strong>Read the evidence before acting.</strong><p>Wax, pollen and debris can resemble mites. Inspect the marked-up image and rejected candidates. Regional thresholds depend on the sampling method, season and colony; this guide does not prescribe treatments.</p><p class="hint">Reviewed 5 November 2026. This is an orientation guide, not a live distribution map. <a href="https://www.woah.org/en/disease/diseases-of-bees/" target="_blank" rel="noopener">WOAH disease reference ↗</a></p></div>
         </section>
 
         <!-- Overview -->
@@ -157,6 +184,7 @@
 
           <div id="attention" class="attention" hidden></div>
 
+          <div id="imported-apiaries" hidden></div>
           <div id="farm-conditions"></div>
 
           <div class="panel" id="hives-panel">
@@ -366,7 +394,7 @@
           <div class="page-head">
             <div>
               <h1 id="history-title">Hive records</h1>
-              <p class="muted">Every inspection of a hive, with photos, evidence and the report.</p>
+              <p id="history-description" class="muted">Every inspection of a hive, with photos, evidence and the report.</p>
               <button type="button" class="link-btn tour-replay" data-tour="explore">Show me around</button>
             </div>
             <div class="page-actions">
@@ -376,9 +404,10 @@
             </div>
           </div>
 
+          <div id="history-field-archive" hidden></div>
           <div id="history-trends" class="trend-grid"></div>
 
-          <div class="history-layout">
+          <div id="history-photo-records" class="history-layout">
             <aside class="panel timeline">
               <header class="panel-head">
                 <h2>Inspections</h2>
@@ -408,7 +437,7 @@
               <header class="panel-head">
                 <div class="panel-title-group">
                   <h2>Test boards 9–20</h2>
-                  <span class="sub-text">128 mites marked by experts. Nothing was tuned on these boards.</span>
+                  <span class="sub-text">Expert annotations. Development overlapped part of this set; independent validation is still needed.</span>
                 </div>
                 <div class="legend">
                   <span><i class="lg-expert"></i>Experts</span>

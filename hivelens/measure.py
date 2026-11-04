@@ -7,6 +7,8 @@ the agent is allowed to state can be traced back to a mask.
 
 from __future__ import annotations
 
+from contextvars import copy_context
+
 from dataclasses import dataclass, field
 
 import cv2
@@ -397,7 +399,7 @@ def measure_comb(frame: Image.Image, progress=None) -> CombResult:
 
     frame = frame.convert("RGB")
     with ThreadPoolExecutor(max_workers=2) as pool:
-        futs = {k: pool.submit(sam.segment, frame, c, max_side=1600, min_confidence=0.3) for k, c in COMB_SAM.items()}
+        futs = {k: pool.submit(copy_context().run, sam.segment, frame, c, max_side=1600, min_confidence=0.3) for k, c in COMB_SAM.items()}
         found = {k: f.result() for k, f in futs.items()}
     if progress:
         progress(1, 2)

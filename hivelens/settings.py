@@ -10,7 +10,7 @@ import json
 import math
 import time
 
-from . import config
+from . import config, workspace
 
 # Muse Spark: $1.25 input, $0.15 cached input, $4.25 output per million tokens, as reported
 # for Meta's paid API (Muse Spark 1.1 to 1.3). Meta has not published a SAM 3.1 API price;
@@ -27,7 +27,7 @@ ROLES = ("beekeeper", "owner", "researcher", "inspector")
 
 
 def _path():
-    return config.DATA_DIR / "settings.json"
+    return workspace.data_dir() / "settings.json"
 
 
 def _merge(base: dict, extra: dict) -> dict:
@@ -47,7 +47,7 @@ def load() -> dict:
 
 
 def photo_path():
-    return config.DATA_DIR / "profile.jpg"
+    return workspace.data_dir() / "profile.jpg"
 
 
 def set_photo(image) -> dict:
@@ -64,6 +64,7 @@ def set_photo(image) -> dict:
         path.parent.mkdir(parents=True, exist_ok=True)
         square.save(path, "JPEG", quality=88)
         settings["profile"]["photo_version"] = int(time.time())
+    _path().parent.mkdir(parents=True, exist_ok=True)
     _path().write_text(json.dumps(settings, indent=2))
     return settings
 

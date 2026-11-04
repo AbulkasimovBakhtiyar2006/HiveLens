@@ -1,0 +1,889 @@
+{
+  "date": "2026-11-04",
+  "created": "2026-11-04T15:42:57",
+  "models": {
+    "segmentation": "sam-3.1",
+    "reasoning": "muse-spark-1.3"
+  },
+  "inputs": {
+    "days_on_board": 3,
+    "frames_in_hive": 10,
+    "note": ""
+  },
+  "metrics": {
+    "mite_count": 20,
+    "days_on_board": 3.0,
+    "mites_per_day": 6.67,
+    "rejected_detections": 9,
+    "honey_pct": 0.0,
+    "brood_pct": 26.4,
+    "larvae_pct": 0.0,
+    "pollen_pct": 8.4,
+    "empty_pct": 60.6,
+    "bees_pct": 4.6,
+    "sides_photographed": 1,
+    "honey_kg_photographed": 0.0,
+    "frames_in_hive": 10,
+    "honey_kg_hive_est": 0.0,
+    "stores_weeks": 0.0,
+    "brood_total_pct": 26.4,
+    "mites_per_day_change": 3.67,
+    "honey_kg_hive_est_change": -0.8,
+    "brood_total_pct_change": 4.1
+  },
+  "per_photo": {
+    "board": {
+      "mite_count": 20,
+      "days_on_board": 3.0,
+      "mites_per_day": 6.67,
+      "rejected_detections": 9
+    },
+    "frame_1": {
+      "honey_pct": 0.0,
+      "brood_pct": 26.4,
+      "larvae_pct": 0.0,
+      "pollen_pct": 8.4,
+      "empty_pct": 60.6,
+      "bees_pct": 4.6,
+      "honey_kg_this_side": 0.0,
+      "bees_counted": 91,
+      "tiles_read": 37
+    }
+  },
+  "detections": {
+    "board": {
+      "kept": [
+        {
+          "concept": "varroa mite",
+          "box": [
+            358.0,
+            6881.0,
+            401.0,
+            6911.0
+          ],
+          "confidence": 0.8750000596046448,
+          "area_px": 966.0
+        },
+        {
+          "concept": "varroa mite",
+          "box": [
+            1355.0,
+            4740.0,
+            1388.0,
+            4784.0
+          ],
+          "confidence": 0.7968254089355469,
+          "area_px": 1061.0
+        },
+        {
+          "concept": "varroa mite",
+          "box": [
+            165.0,
+            5237.0,
+            209.0,
+            5269.0
+          ],
+          "confidence": 0.7104072570800781,
+          "area_px": 1085.0
+        },
+        {
+          "concept": "varroa mite",
+          "box": [
+            2070.0,
+            2099.0,
+            2117.0,
+            2135.0
+          ],
+          "confidence": 0.7037037014961243,
+          "area_px": 1201.0
+        },
+        {
+          "concept": "varroa mite",
+          "box": [
+            1379.0,
+            3357.0,
+            1424.0,
+            3389.0
+          ],
+          "confidence": 0.5508772134780884,
+          "area_px": 1083.0
+        },
+        {
+          "concept": "varroa mite",
+          "box": [
+            1177.0,
+            2509.0,
+            1222.0,
+            2545.0
+          ],
+          "confidence": 0.507692277431488,
+          "area_px": 1162.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            1738.0,
+            2910.0,
+            1780.0,
+            2952.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            195.0,
+            5805.0,
+            237.0,
+            5847.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            1109.0,
+            2209.5,
+            1151.0,
+            2251.5
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            3269.0,
+            5623.5,
+            3311.0,
+            5665.5
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            2459.5,
+            3075.5,
+            2501.5,
+            3117.5
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            3726.5,
+            4805.0,
+            3768.5,
+            4847.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            794.0,
+            6429.0,
+            836.0,
+            6471.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            683.0,
+            4888.5,
+            725.0,
+            4930.5
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            2369.0,
+            3346.0,
+            2411.0,
+            3388.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            1556.0,
+            7545.5,
+            1598.0,
+            7587.5
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            3136.0,
+            7851.5,
+            3178.0,
+            7893.5
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            2977.0,
+            4612.5,
+            3019.0,
+            4654.5
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            1349.0,
+            4013.0,
+            1391.0,
+            4055.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            3451.0,
+            7779.0,
+            3493.0,
+            7821.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0
+        }
+      ],
+      "rejected": [
+        {
+          "concept": "varroa mite",
+          "box": [
+            5160.0,
+            5990.0,
+            5213.0,
+            6012.0
+          ],
+          "confidence": 0.6952381134033203,
+          "area_px": 905.0,
+          "reason": "too small for a mite"
+        },
+        {
+          "concept": "varroa mite",
+          "box": [
+            5168.0,
+            5942.0,
+            5211.0,
+            5965.0
+          ],
+          "confidence": 0.6717948913574219,
+          "area_px": 702.0,
+          "reason": "too small for a mite"
+        },
+        {
+          "concept": "varroa mite",
+          "box": [
+            3386.0,
+            5245.0,
+            3418.0,
+            5288.0
+          ],
+          "confidence": 0.5704697966575623,
+          "area_px": 1061.0,
+          "reason": "too large for a mite"
+        },
+        {
+          "concept": "varroa mite",
+          "box": [
+            1399.0,
+            4906.0,
+            1415.0,
+            4915.0
+          ],
+          "confidence": 0.5460992455482483,
+          "area_px": 122.0,
+          "reason": "too small for a mite"
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            5250.5,
+            7673.0,
+            5292.5,
+            7715.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0,
+          "reason": "no dark body under the detection"
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            5431.0,
+            1791.0,
+            5473.0,
+            1833.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0,
+          "reason": "no dark body under the detection"
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            5241.5,
+            7142.0,
+            5283.5,
+            7184.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0,
+          "reason": "no dark body under the detection"
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            5513.0,
+            1778.0,
+            5555.0,
+            1820.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0,
+          "reason": "no dark body under the detection"
+        },
+        {
+          "concept": "varroa mite (Muse Spark vote)",
+          "box": [
+            5254.5,
+            7749.0,
+            5296.5,
+            7791.0
+          ],
+          "confidence": null,
+          "area_px": 1764.0,
+          "reason": "no dark body under the detection"
+        }
+      ]
+    },
+    "frame_1": {
+      "comb": 2,
+      "bees": 91
+    }
+  },
+  "status": {
+    "levels": {
+      "varroa": "watch",
+      "stores": "act",
+      "brood": "good"
+    },
+    "overall": "act",
+    "flags": [
+      "Mite drop 6.67/day is above the watch threshold (3.0/day).",
+      "Mite drop is rising since the previous inspection.",
+      "Estimated stores cover only 0.0 weeks."
+    ]
+  },
+  "report": {
+    "summary": "My early guesses of ~2 mites/day and ~40% honey were both rejected; corrected measurements show 6.67 mites/day and 0.0 weeks of stores. Overall status is act, driven by the stores act level, with varroa at watch and brood at good. Frame 1 shows solid central brood with some pollen but no measured honey reserve.",
+    "status": {
+      "levels": {
+        "varroa": "watch",
+        "stores": "act",
+        "brood": "good"
+      },
+      "overall": "act",
+      "flags": [
+        "Mite drop 6.67/day is above the watch threshold (3.0/day).",
+        "Mite drop is rising since the previous inspection.",
+        "Estimated stores cover only 0.0 weeks."
+      ]
+    },
+    "findings": [
+      {
+        "claim_ids": [
+          "c4",
+          "c8"
+        ],
+        "text": "My early guess of ~2 mites/day was rejected and corrected: board has 20 mites over 3 days = 6.67 mites/day, above watch threshold."
+      },
+      {
+        "claim_ids": [
+          "c7",
+          "c6"
+        ],
+        "text": "My early guess of ~40% honey was rejected and corrected: stores cover 0.0 weeks with 60.6% empty cells on the side, which drives overall act status for stores."
+      },
+      {
+        "claim_ids": [
+          "c1",
+          "c5"
+        ],
+        "text": "Central capped brood covers 26.4% of the frame side (good level) with 8.4% pollen visible around brood."
+      }
+    ],
+    "actions": [
+      {
+        "action": "Feed and re-check stores immediately - photographed honey is 0 kg with 0.0 weeks cover, check all frames and feeder",
+        "reason": "stores_weeks 0.0 triggers act status; empty cells 60.6%",
+        "urgency": "now"
+      },
+      {
+        "action": "Re-count varroa in 7 days and prepare control plan per local guidance - do not delay",
+        "reason": "mite drop 6.67/day above 3.0/day watch threshold and rising",
+        "urgency": "this_week"
+      },
+      {
+        "action": "At next inspection check brood pattern and pollen intake and confirm queen laying",
+        "reason": "brood 26.4% good but stores empty, need to confirm continued laying",
+        "urgency": "next_inspection"
+      }
+    ],
+    "caveats": [],
+    "discarded_findings": []
+  },
+  "claims": [
+    {
+      "metric": "brood_total_pct",
+      "op": "about",
+      "statement": "central dark capped brood covers about 25% of the frame side",
+      "value": 25.0,
+      "actual": 26.4,
+      "verdict": "verified",
+      "reason": "measured brood_total_pct = 26.4",
+      "id": "c1"
+    },
+    {
+      "metric": "mites_per_day",
+      "op": "about",
+      "statement": "sticky board shows about 2 mites per day natural fall",
+      "value": 2.0,
+      "actual": 6.67,
+      "verdict": "rejected",
+      "reason": "measured mites_per_day = 6.67",
+      "id": "c2"
+    },
+    {
+      "metric": "honey_pct",
+      "op": "about",
+      "statement": "honey and nectar surround brood covering about 40% of frame side",
+      "value": 40.0,
+      "actual": 0.0,
+      "verdict": "rejected",
+      "reason": "measured honey_pct = 0.0",
+      "id": "c3"
+    },
+    {
+      "metric": "mites_per_day",
+      "op": "about",
+      "statement": "corrected mite drop is about 6.7 mites per day",
+      "value": 6.7,
+      "actual": 6.67,
+      "verdict": "verified",
+      "reason": "measured mites_per_day = 6.67",
+      "id": "c4"
+    },
+    {
+      "metric": "pollen_pct",
+      "op": "about",
+      "statement": "pollen covers about 8% of frame side",
+      "value": 8.0,
+      "actual": 8.4,
+      "verdict": "verified",
+      "reason": "measured pollen_pct = 8.4",
+      "id": "c5"
+    },
+    {
+      "metric": "empty_pct",
+      "op": "about",
+      "statement": "empty cells cover about 61% of frame side",
+      "value": 61.0,
+      "actual": 60.6,
+      "verdict": "verified",
+      "reason": "measured empty_pct = 60.6",
+      "id": "c6"
+    },
+    {
+      "metric": "stores_weeks",
+      "op": "about",
+      "statement": "estimated stores cover about 0 weeks",
+      "value": 0.0,
+      "actual": 0.0,
+      "verdict": "verified",
+      "reason": "measured stores_weeks = 0.0",
+      "id": "c7"
+    },
+    {
+      "metric": "mite_count",
+      "op": "about",
+      "statement": "total mite count on board is about 20 mites",
+      "value": 20.0,
+      "actual": 20,
+      "verdict": "verified",
+      "reason": "measured mite_count = 20.0",
+      "id": "c8"
+    }
+  ],
+  "trace": [
+    {
+      "type": "thought",
+      "step": 0,
+      "text": "I'll start with visual estimates for brood and mite levels to check against your photos."
+    },
+    {
+      "type": "tool_call",
+      "step": 0,
+      "name": "check_claim",
+      "args": {
+        "metric": "brood_total_pct",
+        "op": "about",
+        "statement": "central dark capped brood covers about 25% of the frame side",
+        "value": 25.0
+      }
+    },
+    {
+      "type": "claim",
+      "metric": "brood_total_pct",
+      "op": "about",
+      "statement": "central dark capped brood covers about 25% of the frame side",
+      "value": 25.0,
+      "actual": 26.4,
+      "verdict": "verified",
+      "reason": "measured brood_total_pct = 26.4",
+      "id": "c1"
+    },
+    {
+      "type": "tool_call",
+      "step": 0,
+      "name": "check_claim",
+      "args": {
+        "metric": "mites_per_day",
+        "op": "about",
+        "statement": "sticky board shows about 2 mites per day natural fall",
+        "value": 2.0
+      }
+    },
+    {
+      "type": "claim",
+      "metric": "mites_per_day",
+      "op": "about",
+      "statement": "sticky board shows about 2 mites per day natural fall",
+      "value": 2.0,
+      "actual": 6.67,
+      "verdict": "rejected",
+      "reason": "measured mites_per_day = 6.67",
+      "id": "c2"
+    },
+    {
+      "type": "thought",
+      "step": 1,
+      "text": "My brood estimate checked out but the mite count was off \u2014 I'll pull the full measurements to assess the hive."
+    },
+    {
+      "type": "tool_call",
+      "step": 1,
+      "name": "check_claim",
+      "args": {
+        "metric": "honey_pct",
+        "op": "about",
+        "statement": "honey and nectar surround brood covering about 40% of frame side",
+        "value": 40.0
+      }
+    },
+    {
+      "type": "claim",
+      "metric": "honey_pct",
+      "op": "about",
+      "statement": "honey and nectar surround brood covering about 40% of frame side",
+      "value": 40.0,
+      "actual": 0.0,
+      "verdict": "rejected",
+      "reason": "measured honey_pct = 0.0",
+      "id": "c3"
+    },
+    {
+      "type": "thought",
+      "step": 2,
+      "text": "Those initial guesses need correcting \u2014 now I'll gather the complete hive measurements."
+    },
+    {
+      "type": "tool_call",
+      "step": 2,
+      "name": "get_measurements",
+      "args": {}
+    },
+    {
+      "type": "tool_result",
+      "step": 2,
+      "name": "get_measurements",
+      "result": {
+        "metrics": {
+          "mite_count": 20,
+          "days_on_board": 3.0,
+          "mites_per_day": 6.67,
+          "rejected_detections": 9,
+          "honey_pct": 0.0,
+          "brood_pct": 26.4,
+          "larvae_pct": 0.0,
+          "pollen_pct": 8.4,
+          "empty_pct": 60.6,
+          "bees_pct": 4.6,
+          "sides_photographed": 1,
+          "honey_kg_photographed": 0.0,
+          "frames_in_hive": 10,
+          "honey_kg_hive_est": 0.0,
+          "stores_weeks": 0.0,
+          "brood_total_pct": 26.4,
+          "mites_per_day_change": 3.67,
+          "honey_kg_hive_est_change": -0.8,
+          "brood_total_pct_change": 4.1
+        },
+        "status": {
+          "levels": {
+            "varroa": "watch",
+            "stores": "act",
+            "brood": "good"
+          },
+          "overall": "act",
+          "flags": [
+            "Mite drop 6.67/day is above the watch threshold (3.0/day).",
+            "Mite drop is rising since the previous inspection.",
+            "Estimated stores cover only 0.0 weeks."
+          ]
+        }
+      }
+    },
+    {
+      "type": "thought",
+      "step": 3,
+      "text": "My first estimates missed the mark, so I'm gathering verified measurements to complete the assessment."
+    },
+    {
+      "type": "tool_call",
+      "step": 3,
+      "name": "check_claim",
+      "args": {
+        "metric": "mites_per_day",
+        "op": "about",
+        "statement": "corrected mite drop is about 6.7 mites per day",
+        "value": 6.7
+      }
+    },
+    {
+      "type": "claim",
+      "metric": "mites_per_day",
+      "op": "about",
+      "statement": "corrected mite drop is about 6.7 mites per day",
+      "value": 6.7,
+      "actual": 6.67,
+      "verdict": "verified",
+      "reason": "measured mites_per_day = 6.67",
+      "id": "c4"
+    },
+    {
+      "type": "tool_call",
+      "step": 3,
+      "name": "check_claim",
+      "args": {
+        "metric": "pollen_pct",
+        "op": "about",
+        "statement": "pollen covers about 8% of frame side",
+        "value": 8.0
+      }
+    },
+    {
+      "type": "claim",
+      "metric": "pollen_pct",
+      "op": "about",
+      "statement": "pollen covers about 8% of frame side",
+      "value": 8.0,
+      "actual": 8.4,
+      "verdict": "verified",
+      "reason": "measured pollen_pct = 8.4",
+      "id": "c5"
+    },
+    {
+      "type": "tool_call",
+      "step": 3,
+      "name": "check_claim",
+      "args": {
+        "metric": "empty_pct",
+        "op": "about",
+        "statement": "empty cells cover about 61% of frame side",
+        "value": 61.0
+      }
+    },
+    {
+      "type": "claim",
+      "metric": "empty_pct",
+      "op": "about",
+      "statement": "empty cells cover about 61% of frame side",
+      "value": 61.0,
+      "actual": 60.6,
+      "verdict": "verified",
+      "reason": "measured empty_pct = 60.6",
+      "id": "c6"
+    },
+    {
+      "type": "tool_call",
+      "step": 3,
+      "name": "check_claim",
+      "args": {
+        "metric": "stores_weeks",
+        "op": "about",
+        "statement": "estimated stores cover about 0 weeks",
+        "value": 0.0
+      }
+    },
+    {
+      "type": "claim",
+      "metric": "stores_weeks",
+      "op": "about",
+      "statement": "estimated stores cover about 0 weeks",
+      "value": 0.0,
+      "actual": 0.0,
+      "verdict": "verified",
+      "reason": "measured stores_weeks = 0.0",
+      "id": "c7"
+    },
+    {
+      "type": "tool_call",
+      "step": 3,
+      "name": "check_claim",
+      "args": {
+        "metric": "mite_count",
+        "op": "about",
+        "statement": "total mite count on board is about 20 mites",
+        "value": 20.0
+      }
+    },
+    {
+      "type": "claim",
+      "metric": "mite_count",
+      "op": "about",
+      "statement": "total mite count on board is about 20 mites",
+      "value": 20.0,
+      "actual": 20,
+      "verdict": "verified",
+      "reason": "measured mite_count = 20.0",
+      "id": "c8"
+    },
+    {
+      "type": "tool_call",
+      "step": 4,
+      "name": "submit_report",
+      "args": {
+        "actions": [
+          {
+            "action": "Feed and re-check stores immediately - photographed honey is 0 kg with 0.0 weeks cover, check all frames and feeder",
+            "reason": "stores_weeks 0.0 triggers act status; empty cells 60.6%",
+            "urgency": "now"
+          },
+          {
+            "action": "Re-count varroa in 7 days and prepare control plan per local guidance - do not delay",
+            "reason": "mite drop 6.67/day above 3.0/day watch threshold and rising",
+            "urgency": "this_week"
+          },
+          {
+            "action": "At next inspection check brood pattern and pollen intake and confirm queen laying",
+            "reason": "brood 26.4% good but stores empty, need to confirm continued laying",
+            "urgency": "next_inspection"
+          }
+        ],
+        "findings": [
+          {
+            "claim_ids": [
+              "c4",
+              "c8"
+            ],
+            "text": "My early guess of ~2 mites/day was rejected and corrected: board has 20 mites over 3 days = 6.67 mites/day, above watch threshold."
+          },
+          {
+            "claim_ids": [
+              "c7",
+              "c6"
+            ],
+            "text": "My early guess of ~40% honey was rejected and corrected: stores cover 0.0 weeks with 60.6% empty cells on the side, which drives overall act status for stores."
+          },
+          {
+            "claim_ids": [
+              "c1",
+              "c5"
+            ],
+            "text": "Central capped brood covers 26.4% of the frame side (good level) with 8.4% pollen visible around brood."
+          }
+        ],
+        "summary": "My early guesses of ~2 mites/day and ~40% honey were both rejected; corrected measurements show 6.67 mites/day and 0.0 weeks of stores. Overall status is act, driven by the stores act level, with varroa at watch and brood at good. Frame 1 shows solid central brood with some pollen but no measured honey reserve."
+      }
+    },
+    {
+      "type": "tool_result",
+      "step": 4,
+      "name": "submit_report",
+      "result": {
+        "accepted": true,
+        "kept_findings": 3,
+        "discarded_unverified": 0
+      }
+    }
+  ],
+  "usage_tokens": 23537,
+  "id": "2026-11-04-154338",
+  "files": {
+    "board": "board.jpg",
+    "frame_1": "frame_1.jpg",
+    "board_overlay": "board_overlay.jpg",
+    "frame_1_overlay": "frame_1_overlay.jpg",
+    "board_evidence": "board_evidence.jpg",
+    "board_muse_sheet_1": "board_muse_sheet_1.jpg",
+    "board_muse_sheet_2": "board_muse_sheet_2.jpg",
+    "board_muse_sheet_3": "board_muse_sheet_3.jpg",
+    "board_muse_sheet_4": "board_muse_sheet_4.jpg"
+  },
+  "demo_capture": true,
+  "source_kind": "sample_analysis",
+  "bundled_example": true,
+  "provenance": {
+    "kind": "sample_analysis",
+    "note": "Saved model run on two unrelated public photographs, not observations of one colony. The run date is not the photo date. Board exposure (3 days), hive size (10 frames) and prior history were demonstration inputs. Original metrics, model report and trace are preserved; trends and recommendations are not real field evidence.",
+    "sources": [
+      {
+        "photo": "board",
+        "title": "IMG_5582 \u2014 annotated sticky board",
+        "author": "Divas\u00f3n et al. (2023)",
+        "source": "https://doi.org/10.5281/zenodo.10231845",
+        "license": "CC BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "modifications": "JPEG re-encoding; detection overlays, evidence crops and numbered candidate sheets by HiveLens."
+      },
+      {
+        "photo": "frame_1",
+        "title": "Frame from hive of honey bee (apis mellifera)",
+        "author": "John Pons",
+        "source": "https://commons.wikimedia.org/wiki/File:Frame_from_hive_of_honey_bee_(apis_mellifera).jpg",
+        "license": "CC BY-SA 4.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "modifications": "JPEG re-encoding and segmentation overlay by HiveLens; derived frame images remain CC BY-SA 4.0."
+      }
+    ]
+  }
+}

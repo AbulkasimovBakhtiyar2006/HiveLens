@@ -227,7 +227,7 @@ function farmFacts(farm, data) {
   const elev = data?.elevation_m ?? farm.elevation_m;
   return `<dl class="cond-facts">
     <div class="cond-fact"><dt>Place</dt><dd>${esc(farm.place || farm.location || "Not set")}${coords ? `<p>${esc(coords)}${elev != null ? `, ${num(elev, 0)} m above sea level` : ""}</p>` : ""}</dd></div>
-    ${farm.lat != null ? `<div class="map-slot farm" data-map-slot="farm:${esc(farm.id)}" aria-label="Map of ${esc(farm.name)}"></div>` : ""}
+    ${hasLocation(farm) ? `<div class="cond-fact cond-location"><dt>Location map</dt><dd>${mapSlot(`farm:${farm.id}`, `Map of ${farm.name}`)}</dd></div>` : ""}
     ${breedBlock(farm)}
   </dl>`;
 }
@@ -259,6 +259,7 @@ function farmConditionsPanel(farm) {
   if (!data) {
     return `<section class="panel conditions">${head(farm.place || farm.location)}
       <div class="cond-empty"><p>${entry.error ? esc(entry.error) : "Loading the forecast…"}</p>${entry.error ? `<button type="button" class="btn sm" data-weather-retry="${esc(farm.id)}">Try again</button>` : ""}</div>
+      <div class="cond-body no-weather">${farmFacts(farm, null)}</div>
     </section>`;
   }
   const pick = hourPick[farm.id];
@@ -299,103 +300,319 @@ function farmConditionsPanel(farm) {
   </section>`;
 }
 
-function farmWeatherCard(farm) {
-  if (farm.lat == null) {
-    return `<div class="wcard no-location">
-      <strong>${esc(farm.name)}</strong>
-      <p>No location yet.</p>
-      <button type="button" class="link-btn" data-edit-farm="${esc(farm.id)}">Add location</button>
-    </div>`;
-  }
-  const entry = loadWeather(farm.id);
-  const c = entry.data?.current;
-  return `<button type="button" class="wcard" data-farm="${esc(farm.id)}">
-    ${c ? weatherIcon(c, "md") : '<span class="wx wx-md placeholder"></span>'}
-    <span class="wcard-body">
-      <strong>${esc(farm.name)}</strong>
-      ${
-        c
-          ? `<span class="wcard-temp">${num(c.temp_c, 0)}°C <span class="muted">${esc(c.text)}</span></span>
-             <span class="wcard-meta">${windArrow(c.wind_dir_deg)}${num(c.wind_ms)} m/s, gusts ${num(c.gust_ms, 0)}</span>
-             <span class="flight-tag ${c.flight.level}">Bee flight: ${FLIGHT[c.flight.level]}</span>`
-          : `<span class="wcard-meta">${entry.error ? esc(entry.error) : "Loading…"}</span>`
-      }
-    </span>
+// The map selection previews a farm; opening its workspace is an explicit second action.
+let locationPick = null;
+const hasLocation = (f) => f && Number.isFinite(f.lat) && Number.isFinite(f.lon) && Math.abs(f.lat) <= 90 && Math.abs(f.lon) <= 180;
+
+function locationCard(farm, index) {
+  const located = hasLocation(farm);
+  const c = located ? loadWeather(farm.id).data?.current : null;
+  return `<button type="button" class="location-card" ${located ? `data-location-pick="${esc(farm.id)}" aria-pressed="${locationPick === farm.id}"` : `data-edit-farm="${esc(farm.id)}"`}>
+    <span class="location-number${located ? "" : " unplaced"}">${located ? String(index + 1).padStart(2, "0") : "–"}</span>
+    <span class="location-card-copy"><strong>${esc(farm.name)}</strong><span>${esc(farm.location || farm.place || "Add a location")}</span>
+      <span class="location-card-meta">${farm.hive_count || 0} ${farm.hive_count === 1 ? "hive" : "hives"}${c ? ` · ${num(c.temp_c, 0)}°C · ${esc(c.text)}` : located ? " · Weather pending" : " · Not on the map"}</span>
+    </span><span class="location-card-arrow" aria-hidden="true">↗</span>
   </button>`;
+}
+
+function locationPreview() {
+  const f = farms().find((f) => f.id === locationPick && hasLocation(f));
+  if (!f) return '<span class="location-caption">Select a farm to explore its location and weather.</span>';
+  return `<div class="location-preview-copy"><strong>${esc(f.name)}</strong><span>${num(f.lat, 4)}, ${num(f.lon, 4)} · ${f.hive_count || 0} hives</span></div>
+    <div class="page-actions"><a class="btn sm" href="${esc(mapsHref(f))}" target="_blank" rel="noopener">Google Maps ↗</a><button type="button" class="btn sm primary" data-farm="${esc(f.id)}">Open farm</button></div>`;
+}
+
+function mapSlot(key, label, world = false) {
+  return `<div class="map-slot ${world ? "world" : "farm"}" data-map-slot="${esc(key)}" aria-label="${esc(label)}">
+    <div class="location-map-tools"><span class="map-provider">Map</span><div class="page-actions">
+      <button type="button" class="map-tool" data-map-fit="${esc(key)}" aria-label="${world ? "Show all farms on map" : "Recenter farm map"}">${world ? "Show all" : "Recenter"}</button>
+      <button type="button" class="map-tool" data-map-type="${esc(key)}" aria-pressed="false" hidden>Satellite</button>
+    </div></div><div class="map-mount"><p class="map-offline" role="status">Loading map…</p></div>
+  </div>`;
 }
 
 function renderFarmConditions() {
   const el = $("farm-conditions");
   if (!el || !state) return;
+  const railScroll = el.querySelector(".location-rail")?.scrollTop || 0;
+  const focusedFarm = el.contains(document.activeElement) ? document.activeElement?.dataset.locationPick : null;
   if (selectedFarm === "all") {
-    const real = farms().filter((f) => f.id);
-    const unplaced = real.filter((f) => f.lat == null).map((f) => f.name);
-    el.innerHTML = real.length
-      ? `<section class="panel"><header class="panel-head"><div class="panel-title-group"><h2>Your farms</h2><span class="sub-text">Where they are and the weather there now. Select a pin or a card to open a farm.${
-          unplaced.length ? ` ${esc(unplaced.join(", "))} ${unplaced.length === 1 ? "has" : "have"} no location yet.` : ""
-        }</span></div></header>
-        ${real.some((f) => f.lat != null) ? '<div class="map-slot world" data-map-slot="world" aria-label="World map of your farms"></div>' : ""}
-        <div class="wcards">${real.map(farmWeatherCard).join("")}</div></section>`
-      : "";
-    mountFarmMaps(el);
-    return;
+    const real = farms().filter((f) => f.id && !f.field_archive);
+    const located = real.filter(hasLocation);
+    if (!located.some((f) => f.id === locationPick)) locationPick = null;
+    el.innerHTML = real.length ? `<section class="panel location-panel">
+      <header class="panel-head"><div class="panel-title-group"><h2>Farm locations</h2><span class="sub-text">${located.length} on the map · ${real.length} farms</span></div><button type="button" class="btn sm" data-add-farm>Add farm</button></header>
+      <div class="location-workspace">
+        <div class="location-rail" aria-label="Farms on the map">${real.map((f) => locationCard(f, located.indexOf(f))).join("")}</div>
+        ${located.length ? mapSlot("world", "Map of your farms", true) : '<div class="location-empty"><strong>Put your apiary on the map</strong><p>Add a place or coordinates to a farm to see it here.</p><button type="button" class="btn sm" data-edit-farm="'+esc(real[0].id)+'">Add location</button></div>'}
+      </div><div class="location-preview" aria-live="polite">${locationPreview()}</div>
+    </section>` : "";
+  } else {
+    const farm = farmByKey(selectedFarm);
+    el.innerHTML = farm?.id && !farm.field_archive ? farmConditionsPanel(farm) : "";
   }
-  const farm = farmByKey(selectedFarm);
-  el.innerHTML = farm?.id ? farmConditionsPanel(farm) : "";
+  const rail = el.querySelector(".location-rail");
+  if (rail) rail.scrollTop = railScroll;
+  if (focusedFarm) el.querySelector(`[data-location-pick="${CSS.escape(focusedFarm)}"]`)?.focus({ preventScroll: true });
   mountFarmMaps(el);
 }
 
-/* ── Farm location maps (Leaflet with OpenStreetMap tiles, no API key) ── */
-// Each map is built once and its element is moved back into the redrawn panel, so refreshing
-// the weather never reloads tiles or loses the user's zoom.
+/* ── Location map providers ──────────────────────────────────────────── */
+// One retained map per view. Weather refreshes move the canvas, not recreate the map.
+// Google is optional; absence, network failure or rejected credentials fall back to OSM.
 const farmMaps = {};
 const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const TILE_CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+let googleMapsLoad;
+let googleMapsUnavailable = false;
+const reduceMapMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function statusColour(status) {
-  const name = { act: "--act", watch: "--watch", good: "--good" }[status];
-  return (name && getComputedStyle(document.documentElement).getPropertyValue(name).trim()) || "#9aa5ae";
+function loadGoogleMaps() {
+  const key = state?.maps?.browser_key;
+  if (!key || googleMapsUnavailable) return Promise.resolve(null);
+  if (googleMapsLoad) return googleMapsLoad;
+  googleMapsLoad = new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const fail = () => {
+      googleMapsUnavailable = true;
+      finish(null);
+      // Authentication errors can arrive after the script loaded successfully.
+      for (const [id, entry] of Object.entries(farmMaps)) {
+        if (entry.provider !== "google") continue;
+        entry.observer?.disconnect();
+        entry.dispose();
+        entry.el.remove();
+        delete farmMaps[id];
+      }
+      if (view === "overview") mountFarmMaps($("farm-conditions"));
+    };
+    const timer = setTimeout(fail, 10000);
+    window.gm_authFailure = fail;
+    window.hiveLensMapsReady = async () => {
+      try {
+        await Promise.all([google.maps.importLibrary("maps"), google.maps.importLibrary("marker")]);
+        finish(googleMapsUnavailable ? null : google.maps);
+      } catch { fail(); }
+    };
+    const script = document.createElement("script");
+    const query = new URLSearchParams({ key, v: "weekly", loading: "async", callback: "hiveLensMapsReady" });
+    script.src = `https://maps.googleapis.com/maps/api/js?${query}`;
+    script.async = true;
+    script.onerror = fail;
+    document.head.appendChild(script);
+  });
+  return googleMapsLoad;
 }
 
-function mountFarmMaps(root) {
-  root.querySelectorAll("[data-map-slot]").forEach((slot) => {
-    if (typeof L === "undefined") {
-      slot.innerHTML = '<p class="hint map-offline">The map needs an internet connection.</p>';
-      return;
+function mapPinHtml(f, index) {
+  return `<span class="location-pin${locationPick === f.id ? " selected" : ""}">${String(index + 1).padStart(2, "0")}</span>`;
+}
+
+function createLeafletMap(el, world) {
+  const map = L.map(el, { scrollWheelZoom: false, worldCopyJump: true, zoomSnap: 0.5, zoomControl: false, minZoom: 1 });
+  L.control.zoom({ position: "bottomright" }).addTo(map);
+  L.control.scale({ position: "bottomleft", imperial: false }).addTo(map);
+  const tiles = L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_CREDIT }).addTo(map);
+  const pins = L.layerGroup().addTo(map);
+  let shown = [];
+  const draw = () => {
+    pins.clearLayers();
+    // Nearby farms share a marker at world scale, then separate as the map zooms in.
+    const groups = [];
+    shown.forEach((f, i) => {
+      const point = map.latLngToLayerPoint([f.lat, f.lon]);
+      const group = groups.find((g) => g.point.distanceTo(point) < 38);
+      if (group) group.items.push({ f, i });
+      else groups.push({ point, items: [{ f, i }] });
+    });
+    for (const { items } of groups) {
+      const { f, i } = items[0];
+      const cluster = items.length > 1;
+      const marker = L.marker([f.lat, f.lon], {
+        icon: L.divIcon({ className: "location-marker", html: cluster ? `<span class="location-pin cluster">${items.length}<small>farms</small></span>` : mapPinHtml(f, i), iconSize: [38, 44], iconAnchor: [19, 40] }),
+        title: cluster ? `${items.length} farms. Zoom in to explore.` : f.name,
+        keyboard: true,
+      });
+      marker.bindTooltip(items.map(({ f }) => esc(f.name)).join("<br>"), { direction: "top", offset: [0, -40], className: "location-tooltip" });
+      marker.on("click", () => cluster
+        ? map.fitBounds(items.map(({ f }) => [f.lat, f.lon]), { padding: [64, 64], maxZoom: 14, animate: !reduceMapMotion() })
+        : world ? pickLocation(f.id) : selectFarm(farmKey(f.id)));
+      marker.addTo(pins);
+      marker.getElement()?.setAttribute("aria-label", cluster ? `${items.length} farms. Zoom in to explore.` : `Show ${f.name} on map`);
     }
-    const key = slot.dataset.mapSlot;
-    const world = key === "world";
-    const shown = world ? farms().filter((f) => f.id && f.lat != null) : [farmByKey(key.slice(5))].filter((f) => f?.lat != null);
-    let entry = farmMaps[key];
+  };
+  map.on("zoomend", draw);
+  let tileErrors = 0;
+  tiles.on("tileerror", () => {
+    if (++tileErrors < 3 || el.querySelector(".map-tile-error")) return;
+    const notice = document.createElement("p");
+    notice.className = "map-tile-error";
+    notice.textContent = "Map tiles unavailable. Farm locations and Google Maps links still work.";
+    el.appendChild(notice);
+  });
+  tiles.on("tileload", () => { tileErrors = 0; el.querySelector(".map-tile-error")?.remove(); });
+  return {
+    provider: "leaflet", el, map,
+    resize: () => map.invalidateSize({ pan: false }),
+    update: (farms) => { shown = farms; draw(); },
+    fit: () => {
+      if (!shown.length) return;
+      if (!world || shown.length === 1) map.setView([shown[0].lat, shown[0].lon], world ? 7 : 12, { animate: false });
+      else map.fitBounds(shown.map((f) => [f.lat, f.lon]), { padding: [56, 56], maxZoom: 12, animate: false });
+    },
+    focus: (f) => map.setView([f.lat, f.lon], 12, { animate: !reduceMapMotion() }),
+    dispose: () => map.remove(),
+  };
+}
+
+function createGoogleMap(el, world, g) {
+  const map = new g.Map(el, {
+    mapId: state?.maps?.map_id || "DEMO_MAP_ID", center: { lat: 30, lng: 20 }, zoom: 2,
+    disableDefaultUI: true, zoomControl: true, scaleControl: true, gestureHandling: "cooperative",
+    clickableIcons: false, streetViewControl: false,
+  });
+  let shown = [];
+  let pins = [];
+  return {
+    provider: "google", el, map,
+    resize: () => g.event.trigger(map, "resize"),
+    update: (farms) => {
+      shown = farms;
+      pins.forEach((p) => { g.event.clearInstanceListeners(p); p.map = null; });
+      pins = shown.map((f, i) => {
+        const content = document.createElement("div");
+        content.innerHTML = mapPinHtml(f, i);
+        const pin = new g.marker.AdvancedMarkerElement({ map, position: { lat: f.lat, lng: f.lon }, title: f.name, content });
+        pin.addListener("click", () => world ? pickLocation(f.id) : selectFarm(farmKey(f.id)));
+        return pin;
+      });
+    },
+    fit: () => {
+      if (!shown.length) return;
+      if (!world || shown.length === 1) { map.setCenter({ lat: shown[0].lat, lng: shown[0].lon }); map.setZoom(world ? 7 : 12); }
+      else {
+        const bounds = new g.LatLngBounds();
+        shown.forEach((f) => bounds.extend({ lat: f.lat, lng: f.lon }));
+        map.fitBounds(bounds, 56);
+      }
+    },
+    focus: (f) => { map.setCenter({ lat: f.lat, lng: f.lon }); map.setZoom(12); },
+    setType: (satellite) => map.setMapTypeId(satellite ? "hybrid" : "roadmap"),
+    dispose: () => { pins.forEach((p) => { g.event.clearInstanceListeners(p); p.map = null; }); g.event.clearInstanceListeners(map); },
+  };
+}
+
+async function mountFarmMap(slot) {
+  if (!slot.isConnected) return;
+  const key = slot.dataset.mapSlot;
+  const world = key === "world";
+  const shown = world ? farms().filter((f) => f.id && hasLocation(f)) : [farmByKey(key.slice(5))].filter(hasLocation);
+  if (!shown.length) return;
+  let entry = farmMaps[key];
+  if (!entry) {
+    const g = await loadGoogleMaps();
+    if (!slot.isConnected) return;
+    // Another weather refresh may have finished mounting while Google loaded.
+    entry = farmMaps[key];
     if (!entry) {
+      if (!g && typeof L === "undefined") {
+        slot.querySelector(".map-mount").innerHTML = '<p class="map-offline">Map unavailable. Use the farm list or open its location in Google Maps.</p>';
+        return;
+      }
       const el = document.createElement("div");
       el.className = "farm-map-canvas";
-      const map = L.map(el, { scrollWheelZoom: false, worldCopyJump: true, zoomSnap: 0.5 });
-      L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_CREDIT }).addTo(map);
-      entry = farmMaps[key] = { el, map, pins: L.layerGroup().addTo(map), sig: "" };
-    }
-    slot.appendChild(entry.el);
-    // Redraw pins only when farms, places or statuses change; keep the view otherwise.
-    const sig = JSON.stringify(shown.map((f) => [f.id, f.lat, f.lon, f.overall, f.name, document.documentElement.dataset.palette]));
-    requestAnimationFrame(() => {
-      entry.map.invalidateSize();
-      if (sig === entry.sig) return;
-      entry.sig = sig;
-      entry.pins.clearLayers();
-      for (const f of shown) {
-        const pin = L.circleMarker([f.lat, f.lon], {
-          radius: world ? 8 : 10, weight: 2.5, color: "#ffffff", fillColor: statusColour(f.overall), fillOpacity: 1,
-        });
-        pin.bindTooltip(`${esc(f.name)}${f.hive_count != null ? `, ${f.hive_count} hive${f.hive_count === 1 ? "" : "s"}` : ""}`, { direction: "top", offset: [0, -8] });
-        if (world) pin.on("click", () => selectFarm(farmKey(f.id)));
-        pin.addTo(entry.pins);
+      slot.querySelector(".map-mount").replaceChildren(el);
+      try { entry = g ? createGoogleMap(el, world, g) : createLeafletMap(el, world); }
+      catch {
+        if (typeof L === "undefined") { el.textContent = "Map unavailable. Open the location in Google Maps."; return; }
+        el.replaceChildren();
+        entry = createLeafletMap(el, world);
       }
-      if (!world) entry.map.setView([shown[0].lat, shown[0].lon], 11);
-      else if (shown.length === 1) entry.map.setView([shown[0].lat, shown[0].lon], 5);
-      else entry.map.fitBounds(L.latLngBounds(shown.map((f) => [f.lat, f.lon])), { padding: [36, 36], maxZoom: 6 });
-    });
+      farmMaps[key] = entry;
+      entry.observer = new ResizeObserver(() => { if (entry.el.isConnected) entry.resize(); });
+      entry.observer.observe(el);
+    }
+  }
+  slot.querySelector(".map-mount").replaceChildren(entry.el);
+  slot.querySelector(".map-provider").textContent = entry.provider === "google" ? "Google Maps" : "OpenStreetMap";
+  const toggle = slot.querySelector("[data-map-type]");
+  toggle.hidden = entry.provider !== "google";
+  toggle.setAttribute("aria-pressed", String(Boolean(entry.satellite)));
+  const geometry = JSON.stringify(shown.map((f) => [f.id, f.lat, f.lon]));
+  const signature = JSON.stringify(shown.map((f) => [f.id, f.name])) + locationPick;
+  requestAnimationFrame(() => {
+    if (!entry.el.isConnected) return;
+    entry.resize();
+    if (entry.geometry !== geometry) {
+      // Leaflet needs an initial center before projecting marker coordinates.
+      if (entry.provider === "leaflet" && !entry.geometry) entry.map.setView([shown[0].lat, shown[0].lon], 2);
+      entry.update(shown);
+      entry.fit();
+      if (world && locationPick) entry.focus(shown.find((f) => f.id === locationPick));
+    } else if (entry.signature !== signature) entry.update(shown);
+    entry.geometry = geometry;
+    entry.signature = signature;
   });
 }
+
+// Defer tiles and optional Google SDK until a location map approaches the viewport.
+const mapVisibility = new IntersectionObserver((entries) => {
+  for (const entry of entries) if (entry.isIntersecting) {
+    mapVisibility.unobserve(entry.target);
+    mountFarmMap(entry.target);
+  }
+}, { rootMargin: "240px" });
+
+function mountFarmMaps(root) {
+  if (!root) return;
+  mapVisibility.disconnect();
+  root.querySelectorAll("[data-map-slot]").forEach((slot) => {
+    if (farmMaps[slot.dataset.mapSlot]) mountFarmMap(slot);
+    else mapVisibility.observe(slot);
+  });
+}
+
+function pickLocation(id) {
+  const farm = farms().find((f) => f.id === id && hasLocation(f));
+  if (!farm) return;
+  locationPick = id;
+  document.querySelectorAll("[data-location-pick]").forEach((el) => el.setAttribute("aria-pressed", String(el.dataset.locationPick === id)));
+  const preview = document.querySelector(".location-preview");
+  if (preview) preview.innerHTML = locationPreview();
+  const entry = farmMaps.world;
+  if (entry) { entry.focus(farm); entry.update(farms().filter((f) => f.id && hasLocation(f))); }
+}
+
+document.addEventListener("click", (event) => {
+  const pick = event.target.closest("[data-location-pick]");
+  if (pick) { pickLocation(pick.dataset.locationPick); return; }
+  const fit = event.target.closest("[data-map-fit]");
+  if (fit) {
+    const entry = farmMaps[fit.dataset.mapFit];
+    if (fit.dataset.mapFit === "world") {
+      locationPick = null;
+      document.querySelectorAll("[data-location-pick]").forEach((el) => el.setAttribute("aria-pressed", "false"));
+      const preview = document.querySelector(".location-preview");
+      if (preview) preview.innerHTML = locationPreview();
+      entry?.update(farms().filter((f) => f.id && hasLocation(f)));
+    }
+    entry?.fit();
+  }
+  const type = event.target.closest("[data-map-type]");
+  if (type) {
+    const entry = farmMaps[type.dataset.mapType];
+    if (!entry?.setType) return;
+    entry.satellite = !entry.satellite;
+    entry.setType(entry.satellite);
+    type.setAttribute("aria-pressed", String(entry.satellite));
+  }
+});
 
 document.addEventListener("click", (event) => {
   const hour = event.target.closest("[data-weather-hour]");

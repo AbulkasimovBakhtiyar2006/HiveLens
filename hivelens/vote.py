@@ -8,6 +8,8 @@ checks each voted spot for mite size and colour before it is counted.
 
 from __future__ import annotations
 
+from contextvars import copy_context
+
 import hashlib
 import json
 import re
@@ -91,7 +93,7 @@ def vote_mites(board: Image.Image, centers: list[tuple[float, float]], progress=
     chunks = [(i, centers[i: i + per]) for i in range(0, len(centers), per)]
     yes: list[int] = []
     with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [pool.submit(_ask, _sheet(board, chunk, first + 1)) for first, chunk in chunks]
+        futures = [pool.submit(copy_context().run, _ask, _sheet(board, chunk, first + 1)) for first, chunk in chunks]
         for n, fut in enumerate(futures, 1):
             yes += fut.result()
             if progress:
@@ -159,7 +161,7 @@ def label_tiles(frame: Image.Image, rects: list[tuple[float, float, float, float
         jobs.append((first, sheet, len(chunk)))
     labels: dict[int, str] = {}
     with ThreadPoolExecutor(max_workers=4) as pool:
-        futs = [(first, pool.submit(_ask_tiles, sheet, n)) for first, sheet, n in jobs]
+        futs = [(first, pool.submit(copy_context().run, _ask_tiles, sheet, n)) for first, sheet, n in jobs]
         for first, fut in futs:
             for k, lab in fut.result().items():
                 labels[first + k - 1] = lab

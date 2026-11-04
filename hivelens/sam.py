@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from contextvars import copy_context
+
 import hashlib
 import json
 import math
@@ -218,7 +220,7 @@ def segment_crops(
 
     found: list[Instance] = []
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        futures = [pool.submit(one, w) for w in windows]
+        futures = [pool.submit(copy_context().run, one, w) for w in windows]
         for i, fut in enumerate(as_completed(futures), 1):
             found += fut.result()
             if progress:

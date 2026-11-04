@@ -239,8 +239,8 @@ function farmMapPanel(key, members, links, showFarmName) {
   const editing = yardEdit[key];
   const title = showFarmName ? `${farm?.name || "Unassigned"}` : "Yard map";
   const sub = editing
-    ? `Editing the layout of ${farm?.name || "these hives"}. Nothing is saved until you select Save layout.`
-    : `${showFarmName && farm?.location ? `${farm.location}. ` : ""}${members.length} hive${members.length === 1 ? "" : "s"}, drawn to scale${members.some((h) => !h.placed) ? ". Hives you have not placed yet stand in a default grid" : ""}.`;
+    ? "Move hives, then save your layout."
+    : `${members.length} hive${members.length === 1 ? "" : "s"} · ${members.filter((h) => h.placed).length} placed by you`;
   const actions = !members.length
     ? ""
     : editing
@@ -249,16 +249,16 @@ function farmMapPanel(key, members, links, showFarmName) {
          <button type="button" class="btn sm primary" data-yard-save="${esc(key)}"${editing.dirty ? "" : " disabled"}>Save layout</button>`
       : `<button type="button" class="btn sm" data-yard-edit="${esc(key)}">Edit layout</button>`;
   const head = `<header class="panel-head">
-      <div class="panel-title-group"><h2>${esc(title)}</h2><span class="sub-text">${esc(sub)}${members.some(isSynthetic) ? ` Includes ${members.filter(isSynthetic).length} demo hives; their readings and drift links are simulated.` : ""}</span></div>
+      <div class="panel-title-group"><h2>${esc(title)}</h2><div class="yard-summary"><span class="sub-text">${esc(sub)}</span>${members.some(isSynthetic) ? '<span class="tag demo">Demo data included</span>' : ""}</div></div>
       <div class="page-actions">${actions}</div>
-    </header>
-    <p class="map-explain">Lines show where mites can spread. Drifting and robbing bees carry varroa from a hive dropping ${num(state?.thresholds?.mites_per_day_high ?? 10, 0)} or more mites a day to its neighbours within ${DRIFT_M} m. A hive without a line is not near such a hive.</p>
-    <div class="map-legend map-legend-row">
-      <span><i class="dot good"></i>Normal</span><span><i class="dot watch"></i>Watch</span><span><i class="dot act"></i>Critical</span><span>Border: overall status across mites, stores and brood</span>
-      <span><i class="key-line high"></i>Under 2.8 m from a 10+ hive</span><span><i class="key-line"></i>2.8–4 m</span>
-      ${editing ? '<span><i class="key-line measure"></i>Distance while dragging</span>' : ""}
+    </header>`;
+  const legend = `<div class="map-legend map-legend-row" aria-label="Yard map legend">
+      <span><i class="dot good"></i>Normal</span><span><i class="dot watch"></i>Watch</span><span><i class="dot act"></i>Critical</span>
+      <span><i class="key-line high"></i>Under 2.8 m</span><span><i class="key-line"></i>2.8–4 m</span>
+      ${editing ? '<span><i class="key-line measure"></i>Distance</span>' : ""}
       <span><i class="key-ring"></i>Measured</span>
     </div>`;
+  const explanation = `<details class="yard-explanation"><summary>About positions and drift links</summary><p>Positions are in local metres, not GPS coordinates. Hives not yet placed use a default grid. Borders show overall inspection status. Links flag neighbours within ${DRIFT_M} m of a hive dropping ${num(state?.thresholds?.mites_per_day_high ?? 10, 0)} or more mites a day; they indicate potential exposure, not confirmed transmission. Demo readings and links are simulated.</p></details>`;
   if (!members.length) {
     return `<section class="panel farm-map">${head}${emptyState(
       "No hives on this farm yet",
@@ -283,13 +283,14 @@ function farmMapPanel(key, members, links, showFarmName) {
   return `<section class="panel farm-map${editing ? " editing" : ""}" data-farm-map="${esc(key)}">
     ${head}
     <div class="map-workspace">
-      <div class="apiary-map-canvas">${yardSvg(key, members, links)}</div>
+      <div class="yard-map-stage"><div class="yard-canvas-head"><strong>Hive positions</strong><span>Local plan · metres</span></div><div class="apiary-map-canvas">${yardSvg(key, members, links)}</div></div>
       <aside class="drift-sidebar">
         ${hiveDetail(key, byId[mapSelection[key]])}
         ${editing ? "" : `<h4>Mite drift risk <span class="count">${sorted.length}</span></h4><div class="drift-list">${pairs}</div>`}
       </aside>
     </div>
-    ${editing ? arrangeForm(key, members.length) : ""}
+    ${legend}
+    ${editing ? arrangeForm(key, members.length) : explanation}
   </section>`;
 }
 
@@ -298,7 +299,7 @@ function renderFarmMaps() {
   if (!wrap) return;
   const links = state?.apiary?.drift_links || [];
   const keys = selectedFarm === "all" ? farms().filter((f) => f.hive_count).map((f) => farmKey(f.id)) : [selectedFarm];
-  wrap.innerHTML = keys
+  wrap.innerHTML = keys.filter(key => !farmByKey(key)?.field_archive)
     .map((key) => {
       const members = hivesOfFarm(key);
       const ids = new Set(members.map((h) => h.id));

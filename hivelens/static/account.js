@@ -8,7 +8,7 @@ const ROLE_LABELS = { beekeeper: "Beekeeper", owner: "Apiary owner", inspector: 
 // The uploaded photo, or a plain yellow circle when there is none.
 function paintAvatar(el, profile) {
   const v = profile?.photo_version;
-  el.innerHTML = v ? `<img src="/api/profile_photo?v=${encodeURIComponent(v)}" alt="" />` : el.id === "profile-avatar" ? icon("settings") : "";
+  el.innerHTML = v ? `<img src="${apiUrl(`/api/profile_photo?v=${encodeURIComponent(v)}`)}" alt="" />` : el.id === "profile-avatar" ? icon("settings") : "";
   el.classList.toggle("settings-icon", !v && el.id === "profile-avatar");
 }
 
@@ -165,7 +165,7 @@ function fillSettings(data) {
     <div><dt>Endpoint</dt><dd><code>${esc(a.base_url)}</code></dd></div>
     <div><dt>Segmentation</dt><dd><code>${esc(a.segment_model)}</code></dd></div>
     <div><dt>Reasoning</dt><dd><code>${esc(a.reasoning_model)}</code>, effort ${esc(a.reasoning_effort)}</dd></div>
-    <div><dt>Usage log</dt><dd><code>data/usage.jsonl</code></dd></div>`;
+    <div><dt>Usage log</dt><dd><code>${workspaceMode === "production" ? "data/workspaces/production/usage.jsonl" : "data/usage.jsonl"}</code></dd></div>`;
   settingsDirty = false;
   $("settings-hint").textContent = "";
 }

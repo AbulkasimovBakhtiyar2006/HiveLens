@@ -28,6 +28,10 @@ API_KEY = os.getenv("MODEL_API_KEY", "")
 REASONING_MODEL = os.getenv("HIVELENS_REASONING_MODEL", "muse-spark-1.3")
 SEGMENT_MODEL = os.getenv("HIVELENS_SEGMENT_MODEL", "sam-3.1")
 REASONING_EFFORT = os.getenv("HIVELENS_REASONING_EFFORT", "medium")
+# Public browser credential, deliberately separate from the private model API key.
+# Restrict it to HTTP referrers and Maps JavaScript API in Google Cloud.
+GOOGLE_MAPS_BROWSER_KEY = os.getenv("GOOGLE_MAPS_BROWSER_KEY", "")
+GOOGLE_MAPS_MAP_ID = os.getenv("GOOGLE_MAPS_MAP_ID", "")
 
 DATA_DIR = Path(os.getenv("HIVELENS_DATA_DIR", ROOT / "data"))
 CACHE_DIR = DATA_DIR / "cache"

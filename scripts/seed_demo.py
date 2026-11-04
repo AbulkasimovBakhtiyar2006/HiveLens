@@ -66,6 +66,9 @@ def main() -> None:
         print(f"→ inspection {d}: board={picked[k].name if board else '-'} frames={len(frames)}")
         rec = run_inspection(hive["id"], d, frames=frames, board=board, days_on_board=args.days,
                              frames_in_hive=args.frames_in_hive,
+                             sample_sources={"board_sample": picked[k].name if board else None,
+                                             "frame_samples": [combs[k % len(combs)].name] if combs else [],
+                                             "dates": "Synthetic weekly dates for demonstration; source photos are not a longitudinal colony study."},
                              use_agent=not args.no_agent, progress=lambda m, f: print(f"   {m}"))
         print(f"   status {rec['status']['overall']}, metrics {rec['metrics']}")
     print(f"Demo hive ready: {hive['id']}  →  streamlit run app.py")

@@ -23,6 +23,7 @@ def run_inspection(
     board_tile: int = 600,
     board_refine: bool = True,
     capture_sources: dict | None = None,
+    sample_sources: dict | None = None,
     progress: Callable[[str, float], None] | None = None,
     on_event: Callable[[dict], None] | None = None,
 ) -> dict:
@@ -73,7 +74,7 @@ def run_inspection(
         overlays[pid] = viz.comb_overlay(frame, res)
         detections[pid] = {k: len(v) for k, v in res.instances.items()}
 
-    demo_capture = any(source.get("source") == "demo" for source in (capture_sources or {}).values())
+    demo_capture = bool(sample_sources) or any(source.get("source") == "demo" for source in (capture_sources or {}).values())
     history = [] if demo_capture else store.history_before(hive_id, date)
     previous = history[-1]["metrics"] if history else None
     metrics = engine.add_trends(engine.aggregate(varroa_metrics, comb_metrics, frames_in_hive), previous)
@@ -94,12 +95,15 @@ def run_inspection(
         record["inputs"]["capture_sources"] = capture_sources
     if demo_capture:
         record["demo_capture"] = True
+    if sample_sources:
+        record["source_kind"] = "sample_analysis"
+        record["provenance"] = {"kind": "sample_analysis", "note": "Public sample photographs; not a dated observation of this colony.", **sample_sources}
 
     if use_agent:
         say("Muse Spark: forming hypotheses and checking them", 0.8)
         context_note = note
         if demo_capture:
-            context_note += "\nSome photos are captures from a prerecorded demonstration video, not this colony. Explain that those measurements describe demo footage and cannot establish this colony's condition."
+            context_note += "\nSome photos are public samples or captures from demonstration footage, not this colony. Explain that these measurements describe sample media and cannot establish this colony's condition or a real chronological trend."
         run = agent.run_agent(photos, metrics, history, note=context_note, on_event=on_event)
         record.update(run.to_json())
 

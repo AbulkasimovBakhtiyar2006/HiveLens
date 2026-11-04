@@ -61,6 +61,17 @@ def test_create_hive_and_read_empty_history(web):
     assert json.loads(web(f'/api/hive/{hive_id}')[2])['inspections'] == []
 
 
+def test_maps_config_exposes_only_the_dedicated_browser_credential(web, monkeypatch):
+    monkeypatch.setattr(config, 'GOOGLE_MAPS_BROWSER_KEY', 'public-map-test-key')
+    monkeypatch.setattr(config, 'GOOGLE_MAPS_MAP_ID', 'test-map-style')
+    monkeypatch.setattr(config, 'API_KEY', 'private-model-test-key')
+    _, _, raw = web('/api/state')
+    assert json.loads(raw)['maps'] == {
+        'browser_key': 'public-map-test-key', 'map_id': 'test-map-style',
+    }
+    assert b'private-model-test-key' not in raw
+
+
 def test_demo_video_supports_browser_seeking(web):
     status, headers, body = web('/static/comb-demo.mp4', headers={'Range': 'bytes=0-31'})
     assert status == 206 and len(body) == 32

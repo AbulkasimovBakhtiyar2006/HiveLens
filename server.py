@@ -1,8 +1,7 @@
-"""HiveLens Fast Web UI & API Server.
+"""HiveLens Web UI & API Server.
 
-Replaces the laggy Streamlit wrapper with a zero-dependency multi-threaded HTTP + SSE
-server that loads in <50ms, caches 49MP board previews, and streams live SAM 3.1 /
-Muse Spark agent events in real time.
+Uses the standard-library HTTP server with SSE progress events, cached board previews
+and a plain JavaScript frontend. Image/model libraries are imported at startup.
 
 Run with:
     python server.py        # http://127.0.0.1:8502 (the Streamlit app keeps 8501)
@@ -11,6 +10,9 @@ Run with:
 from __future__ import annotations
 
 import base64
+from contextvars import copy_context
+from functools import wraps
+from hivelens import workspace
 import io
 import json
 import math
@@ -142,7 +144,8 @@ def build_apiary_overview() -> dict:
         placed += [(farm_id, i, cols, h) for i, h in enumerate(members)]
 
     for farm_id, idx, cols, h in placed:
-        insps = [record for record in store.inspections(h["id"]) if not record.get("demo_capture")]
+        all_insps = store.inspections(h["id"])
+        insps = [record for record in all_insps if not record.get("demo_capture")]
         latest = insps[-1] if insps else None
         prev = insps[-2] if len(insps) >= 2 else None
 
@@ -176,6 +179,7 @@ def build_apiary_overview() -> dict:
             "id": h["id"],
             "name": h["name"],
             "farm_id": farm_id,
+            "field_archive": h.get("field_archive"),
             "placed": placed,
             "color": h.get("color"),
             "location": h.get("location", "Talgar Apiary"),
@@ -184,6 +188,7 @@ def build_apiary_overview() -> dict:
             "x_m": round(x_m, 2),
             "y_m": round(y_m, 2),
             "inspection_count": len(insps),
+            "sample_inspection_count": len(all_insps) - len(insps),
             "synthetic": bool(latest and latest.get("synthetic")),
             "latest_date": latest.get("date") if latest else None,
             "overall": overall,
@@ -441,9 +446,9 @@ def _run_inspection_job(job_id: str, payload: dict) -> None:
         from hivelens.pipeline import run_inspection
 
         hive_id = payload["hive_id"]
-        if not _safe_part(str(hive_id)) or not (config.HIVES_DIR / hive_id / "hive.json").exists():
+        if not _safe_part(str(hive_id)) or not (workspace.hives_dir() / hive_id / "hive.json").exists():
             raise ValueError("unknown hive")
-        hive_name = json.loads((config.HIVES_DIR / hive_id / "hive.json").read_text()).get("name", hive_id)
+        hive_name = json.loads((workspace.hives_dir() / hive_id / "hive.json").read_text()).get("name", hive_id)
         usage.set_context(job_id=job_id, job_kind="inspection", hive_id=hive_id,
                           label=f"{hive_name}, {payload.get('date') or date.today().isoformat()}")
         insp_date = payload.get("date") or date.today().isoformat()
@@ -491,6 +496,8 @@ def _run_inspection_job(job_id: str, payload: dict) -> None:
             use_agent=use_agent,
             board_refine=board_refine,
             capture_sources=payload.get("capture_sources") or {},
+            sample_sources=({"board_sample": payload.get("board_sample"), "frame_samples": payload.get("frame_samples", [])}
+                            if payload.get("board_sample") or payload.get("frame_samples") else None),
             progress=on_progress,
             on_event=on_event,
         )
@@ -548,7 +555,7 @@ def _run_benchmark_job(job_id: str, payload: dict) -> None:
 def _validate_inspection_payload(body: dict) -> None:
     """Reject unusable jobs before spawning threads or making paid model calls."""
     hive_id = body.get("hive_id", "")
-    if not isinstance(hive_id, str) or not _safe_part(hive_id) or not (config.HIVES_DIR / hive_id / "hive.json").is_file():
+    if not isinstance(hive_id, str) or not _safe_part(hive_id) or not (workspace.hives_dir() / hive_id / "hive.json").is_file():
         raise ValueError("Choose an existing hive before starting an inspection.")
     try:
         date.fromisoformat(body.get("date", ""))
@@ -568,6 +575,12 @@ def _validate_inspection_payload(body: dict) -> None:
         raise ValueError("Choose up to 8 frame photos per inspection.")
     if not (body.get("board_b64") or body.get("board_sample") or photos or samples):
         raise ValueError("Add at least one sticky-board or frame photo.")
+    captures_for_mode = body.get("capture_sources")
+    demo_video = isinstance(captures_for_mode, dict) and any(
+        isinstance(c, dict) and c.get("source") == "demo" for c in captures_for_mode.values()
+    )
+    if workspace.current() == "production" and (body.get("board_sample") or samples or demo_video):
+        raise ValueError("Demo photos and video belong in the demo workspace.")
     available = get_samples()
     if body.get("board_sample") and body["board_sample"] not in {b["name"] for b in available["boards"]}:
         raise ValueError("The selected board sample is no longer available.")
@@ -598,6 +611,27 @@ def _validate_inspection_payload(body: dict) -> None:
             raise ValueError("Invalid video position.")
 
 
+def _workspace_request(method):
+    @wraps(method)
+    def wrapped(self):
+        parsed = urllib.parse.urlsplit(self.path)
+        parts = parsed.path.split('/')
+        mode = 'demo'  # Backwards-compatible local API and CLI workspace.
+        original = self.path
+        if parsed.path.startswith('/api/workspaces/'):
+            if len(parts) < 5 or parts[3] not in workspace.MODES:
+                self._send_json({'error': 'Unknown workspace.'}, 400)
+                return
+            mode = parts[3]
+            self.path = urllib.parse.urlunsplit(('', '', '/api/' + '/'.join(parts[4:]), parsed.query, ''))
+        try:
+            with workspace.scope(mode):
+                return method(self)
+        finally:
+            self.path = original
+    return wrapped
+
+
 class HiveLensHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -626,6 +660,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             raise ValueError("Expected a JSON object")
         return body
 
+    @_workspace_request
     def do_GET(self) -> None:
         parsed = urllib.parse.urlsplit(self.path)
         path = parsed.path
@@ -648,6 +683,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                       "account.css": "text/css; charset=utf-8", "account.js": "text/javascript; charset=utf-8",
                       "camera.js": "text/javascript; charset=utf-8", "comb-demo.mp4": "video/mp4",
                       "yard.js": "text/javascript; charset=utf-8",
+                      "reference.js": "text/javascript; charset=utf-8", "reference.css": "text/css; charset=utf-8",
                       "tour.css": "text/css; charset=utf-8", "tour.js": "text/javascript; charset=utf-8"}
             name = path.removeprefix("/static/")
             # Weather icons (Meteocons, MIT): only plain names inside static/weather/.
@@ -695,6 +731,10 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             self.wfile.write(content[start:end + 1])
             return
 
+        if path == "/api/research/mustb":
+            self._send_json(json.loads((UI_PATH.parent / "datasets" / "mustb.json").read_text()))
+            return
+
         if path == "/api/settings":
             self._send_json({"settings": settings.load(), "api": self._api_info()})
             return
@@ -725,10 +765,15 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             demo_dir = config.DATA_DIR / "demo_assets"
             demo_numbers = json.loads((demo_dir / "numbers.json").read_text()) if (demo_dir / "numbers.json").exists() else None
             demo_images = sorted(p.name for p in demo_dir.glob("*.jpg")) if demo_dir.exists() else []
-            samples = get_samples()
+            samples = get_samples() if workspace.current() == "demo" else {"boards": [], "frames": []}
             self._send_json({
                 "version": __version__,
+                "workspace": workspace.current(),
                 "has_api_key": config.has_api_key(),
+                "maps": {
+                    "browser_key": config.GOOGLE_MAPS_BROWSER_KEY,
+                    "map_id": config.GOOGLE_MAPS_MAP_ID,
+                },
                 "profile": settings.load()["profile"],
                 "segment_model": config.SEGMENT_MODEL,
                 "reasoning_model": config.REASONING_MODEL,
@@ -788,7 +833,8 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 return
             insps = store.inspections(hive_id)
             rows = store.metrics_rows(hive_id)
-            self._send_json({"hive_id": hive_id, "inspections": insps, "metrics_rows": rows})
+            self._send_json({"hive_id": hive_id, "inspections": insps, "metrics_rows": rows,
+                             "field_history": store.field_history(hive_id)})
             return
 
         if path.startswith("/api/file/"):
@@ -798,7 +844,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "bad file path"}, 400)
                 return
             fpath = store.file_path(parts[0], parts[1], parts[2])
-            if not _inside(fpath, config.HIVES_DIR) or fpath.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
+            if not _inside(fpath, workspace.hives_dir()) or fpath.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
                 self._send_json({"error": "not allowed"}, 403)
                 return
             if not fpath.exists():
@@ -825,7 +871,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
 
         if path.startswith("/api/export/"):
             hive_id = urllib.parse.unquote(path.removeprefix("/api/export/").removesuffix(".zip"))
-            if not _safe_part(hive_id) or not (config.HIVES_DIR / hive_id / "hive.json").exists():
+            if not _safe_part(hive_id) or not (workspace.hives_dir() / hive_id / "hive.json").exists():
                 self._send_json({"error": "unknown hive"}, 404)
                 return
             data = store.export_zip(hive_id)
@@ -878,6 +924,11 @@ class HiveLensHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _stream_job(self, job_id: str) -> None:
+        with _JOBS_LOCK:
+            job = _JOBS.get(job_id)
+            if not job or job.get("workspace", "demo") != workspace.current():
+                self._send_json({"error": "Unknown job in this workspace."}, 404)
+                return
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
@@ -919,6 +970,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 return
             time.sleep(0.12)
 
+    @_workspace_request
     def do_POST(self) -> None:
         parsed = urllib.parse.urlsplit(self.path)
         path = parsed.path
@@ -1015,7 +1067,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
 
         if path == "/api/hive_style":
             hive_id = str(body.get("hive_id", ""))
-            if not _safe_part(hive_id) or not (config.HIVES_DIR / hive_id / "hive.json").exists():
+            if not _safe_part(hive_id) or not (workspace.hives_dir() / hive_id / "hive.json").exists():
                 self._send_json({"error": "Unknown hive."}, 404)
                 return
             try:
@@ -1029,7 +1081,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
         if path == "/api/hive_farm":
             hive_id = str(body.get("hive_id", ""))
             farm_id = body.get("farm_id") or None
-            if not _safe_part(hive_id) or not (config.HIVES_DIR / hive_id / "hive.json").exists():
+            if not _safe_part(hive_id) or not (workspace.hives_dir() / hive_id / "hive.json").exists():
                 self._send_json({"error": "Unknown hive."}, 404)
                 return
             if farm_id is not None and (not isinstance(farm_id, str) or store.get_farm(farm_id) is None):
@@ -1040,11 +1092,17 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/seed_apiary":
+            if workspace.current() != "demo":
+                self._send_json({"error": "Sample farms belong in the demo workspace."}, 403)
+                return
             res = seed_demo_apiary()
             self._send_json({**res, "hives": store.list_hives()})
             return
 
         if path == "/api/commons":
+            if workspace.current() != "demo":
+                self._send_json({"error": "Sample photos belong in the demo workspace."}, 403)
+                return
             titles = body.get("titles") or ([body["title"]] if body.get("title") else commons.DEMO_FRAMES)
             saved = []
             errors = []
@@ -1068,8 +1126,8 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 return
             job_id = uuid.uuid4().hex[:12]
             with _JOBS_LOCK:
-                _JOBS[job_id] = {"status": "running", "progress": 0.0, "message": "Starting inspection…", "events": []}
-            t = threading.Thread(target=_run_inspection_job, args=(job_id, body), daemon=True)
+                _JOBS[job_id] = {"workspace": workspace.current(), "status": "running", "progress": 0.0, "message": "Starting inspection…", "events": []}
+            t = threading.Thread(target=copy_context().run, args=(_run_inspection_job, job_id, body), daemon=True)
             t.start()
             self._send_json({"job_id": job_id})
             return
@@ -1088,8 +1146,8 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 return
             job_id = uuid.uuid4().hex[:12]
             with _JOBS_LOCK:
-                _JOBS[job_id] = {"status": "running", "progress": 0.0, "message": "Starting benchmark…", "events": []}
-            t = threading.Thread(target=_run_benchmark_job, args=(job_id, body), daemon=True)
+                _JOBS[job_id] = {"workspace": workspace.current(), "status": "running", "progress": 0.0, "message": "Starting benchmark…", "events": []}
+            t = threading.Thread(target=copy_context().run, args=(_run_benchmark_job, job_id, body), daemon=True)
             t.start()
             self._send_json({"job_id": job_id})
             return
@@ -1098,8 +1156,12 @@ class HiveLensHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    from hivelens.example import install_if_empty
+
     url = f"http://{HOST}:{PORT}"
     server = ThreadingHTTPServer((HOST, PORT), HiveLensHandler)
+    if install_if_empty():
+        print("Installed the attributed photo example in Demo (no model calls).")
     print(f"\n🐝 HiveLens {__version__} is live at:  {url}")
     print(f"   Segmentation : {config.SEGMENT_MODEL}")
     print(f"   Reasoning    : {config.REASONING_MODEL}")

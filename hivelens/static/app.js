@@ -2,6 +2,9 @@
 // HiveLens Enterprise Telemetry UI. Buildless, dependency-free, local-only assets.
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
+const workspaceMode = typeof location !== "undefined" && new URLSearchParams(location.search).get("mode") === "production" ? "production" : "demo";
+const apiUrl = (path) => path.startsWith("/api/") && !path.startsWith("/api/workspaces/") ? path.replace("/api/", `/api/workspaces/${workspaceMode}/`) : path;
+const workspaceStorageKey = (key) => `hivelens:${workspaceMode === "production" && !["palette", "corp_theme", "side-w"].includes(key) ? "production:" : ""}${key}`;
 const $ = (id) => document.getElementById(id);
 const esc = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -49,6 +52,8 @@ const VIEWS = {
   method: "How it works",
   usage: "Usage and cost",
   settings: "Settings",
+  research: "Field dataset",
+  guide: "Mite guide",
 };
 const STATUS = { good: "Normal", watch: "Watch", act: "Critical", unknown: "No data" };
 const statusOf = (s) => (Object.hasOwn(STATUS, s) ? s : "unknown");
@@ -90,30 +95,45 @@ const localDate = () => {
 const store = {
   get(key, fallback = null) {
     try {
-      return JSON.parse(localStorage.getItem(`hivelens:${key}`)) ?? fallback;
+      return JSON.parse(localStorage.getItem(workspaceStorageKey(key))) ?? fallback;
     } catch {
       return fallback;
     }
   },
   set(key, value) {
     try {
-      localStorage.setItem(`hivelens:${key}`, JSON.stringify(value));
+      localStorage.setItem(workspaceStorageKey(key), JSON.stringify(value));
     } catch {
       /* storage unavailable */
     }
   },
 };
+function applyWorkspaceMode() {
+  const production = workspaceMode === "production";
+  document.documentElement.dataset.workspace = workspaceMode;
+  $("workspace-mode").value = workspaceMode;
+  $("workspace-label").textContent = production ? "Production workspace" : "Demo workspace";
+  $("workspace-description").textContent = production
+    ? "Your farms and inspections. Stored separately from the demo."
+    : "Sample analyses and simulated histories. Explore real study data in Field dataset.";
+  if (production) {
+    $("welcome-example").hidden = !welcomeExample;
+    $("welcome-own").classList.add("primary");
+    $("welcome-photo-step").textContent = "Photograph your sticky board for mite counts, or a frame for honey and brood. Keep the hive, date and board exposure time with the photos.";
+    $("welcome-data-note").textContent = "Your workspace contains only the farms and records you add. The public field archive and benchmark remain available as separate references.";
+  }
+}
 const jobSession = {
   get() {
     try {
-      return JSON.parse(sessionStorage.getItem("hivelens:job"));
+      return JSON.parse(sessionStorage.getItem(workspaceStorageKey("job")));
     } catch {
       return null;
     }
   },
   set(job) {
     try {
-      job ? sessionStorage.setItem("hivelens:job", JSON.stringify(job)) : sessionStorage.removeItem("hivelens:job");
+      job ? sessionStorage.setItem(workspaceStorageKey("job"), JSON.stringify(job)) : sessionStorage.removeItem(workspaceStorageKey("job"));
     } catch {
       /* ignore */
     }
@@ -188,7 +208,7 @@ async function api(path, body, signal) {
   const controller = signal ? null : new AbortController();
   const timer = controller ? setTimeout(() => controller.abort(), path === "/api/commons" ? 180000 : 60000) : null;
   try {
-    const response = await fetch(path, {
+    const response = await fetch(apiUrl(path), {
       signal: signal || controller.signal,
       ...(body === undefined
         ? {}
@@ -249,6 +269,7 @@ function route() {
 }
 
 function renderView() {
+  if (view === "research" && typeof renderResearch === "function") renderResearch();
   if (!state) return;
   if (typeof renderProfileChip === "function") renderProfileChip(); // account.js
   if (view === "welcome") renderWelcome();
@@ -264,27 +285,29 @@ let welcomeExample = null;
 let welcomeLoading = false;
 async function renderWelcome() {
   if (welcomeExample || welcomeLoading) return;
-  const candidates = hives().filter((h) => !isSynthetic(h) && h.inspection_count > 0);
+  const candidates = hives().filter((h) => !isSynthetic(h) && (h.inspection_count > 0 || h.sample_inspection_count > 0));
   welcomeLoading = true;
   try {
     for (const hive of candidates) {
       const data = await api(`/api/hive/${encodeURIComponent(hive.id)}`);
-      const rec = [...data.inspections].reverse().find((r) => !r.synthetic && !r.demo_capture && r.report && Object.keys(r.files || {}).some((key) => key.endsWith("_overlay")));
+      const rec = [...data.inspections].reverse().find((r) => !r.synthetic && r.report && Object.keys(r.files || {}).some((key) => key.endsWith("_overlay")));
       if (!rec) continue;
       const files = rec.files;
       const overlay = files.board_overlay ? "board_overlay" : Object.keys(files).find((key) => key.endsWith("_overlay"));
       const original = files[overlay.replace(/_overlay$/, "")];
-      const url = (name) => `/api/file/${encodeURIComponent(hive.id)}/${encodeURIComponent(rec.id)}/${encodeURIComponent(name)}?max_side=720`;
+      const url = (name) => apiUrl(`/api/file/${encodeURIComponent(hive.id)}/${encodeURIComponent(rec.id)}/${encodeURIComponent(name)}?max_side=720`);
       const photo = (name, label) => `<div><img src="${esc(url(name))}" alt="${esc(label)}" decoding="async"><span>${esc(label)}</span></div>`;
       $("welcome-proof").innerHTML = (original ? photo(original, "Original photo") : "") + photo(files[overlay], "Measured evidence");
-      $("welcome-proof-caption").textContent = `${displayName(hive)} · ${dateLabel(rec.date)} · Saved photo analysis`;
+      $("welcome-proof-caption").textContent = rec.demo_capture ? "Public sample photographs · Saved model output, not a real colony history." : `${displayName(hive)} · ${dateLabel(rec.date)} · Saved photo analysis`;
       welcomeExample = { hiveId: hive.id, recordId: rec.id };
       $("welcome-example").disabled = false;
-      $("welcome-example-hint").textContent = "A saved inspection, ready to explore. No upload needed.";
+      $("welcome-example").hidden = false;
+      $("welcome-example-hint").textContent = rec.demo_capture ? "A saved model run on public samples. No API key or upload needed." : "A saved inspection, ready to explore. No upload needed.";
       return;
     }
-    $("welcome-example-hint").textContent = "No saved photo analysis yet. Try your own photos or explore the benchmark.";
+    $("welcome-example-hint").textContent = workspaceMode === "production" ? "Start by adding a hive and its photographs. Your first completed analysis will be saved here." : "No saved photo analysis yet. Try your own photos or explore the benchmark.";
     $("welcome-proof").innerHTML = '<p class="muted">The first completed photo analysis will appear here.</p>';
+    $("welcome-proof-caption").textContent = "Original photographs and marked-up results stay together in your hive’s history.";
   } catch {
     $("welcome-example-hint").textContent = "Could not load the example. Reopen Start here to retry, or explore the workspace.";
   } finally {
@@ -295,6 +318,7 @@ async function renderWelcome() {
 async function loadState() {
   try {
     state = await api("/api/state");
+    applyWorkspaceMode();
     $("load-error").hidden = true;
     const measuredHives = state.apiary?.hives?.filter((h) => !isSynthetic(h)) || [];
     if (!state.hives.some((h) => h.id === selectedHive)) {
@@ -434,10 +458,13 @@ function renderTopbar() {
     crumbs = [farmName(hive.farm_id), shortName(hive)];
     const s = statusOf(hive.overall);
     if (isSynthetic(hive)) facts += fact("Demo data");
-    facts += fact(`Latest: ${STATUS[s]}`, s === "unknown" ? "" : s);
+    if (hive.field_archive) facts += fact("Research archive · 2019–2020");
+    const samplesOnly = !hive.inspection_count && hive.sample_inspection_count > 0;
+    if (samplesOnly) facts += fact("Public photo samples");
+    if (!samplesOnly && (!hive.field_archive || hive.inspection_count)) facts += fact(`Latest: ${STATUS[s]}`, s === "unknown" ? "" : s);
     if (hive.mites_per_day != null) facts += fact(`${num(hive.mites_per_day)} mites/day`);
     if (hive.stores_weeks != null) facts += fact(`${num(hive.stores_weeks)} weeks of stores`);
-    facts += fact(hive.latest_date ? `Inspected ${esc(dateLabel(hive.latest_date))}` : "Not inspected yet");
+    if (!samplesOnly) facts += fact(hive.latest_date ? `Inspected ${esc(dateLabel(hive.latest_date))}` : hive.field_archive ? `Last observation ${esc(dateLabel(hive.field_archive.date_range[1]))}` : "Not inspected yet");
   }
   $("topbar-crumbs").innerHTML = crumbs
     .map((c, i) => (i === crumbs.length - 1 ? `<strong>${esc(c)}</strong>` : `<span>${esc(c)}</span><span class="crumb-sep" aria-hidden="true">/</span>`))
@@ -456,7 +483,7 @@ function renderOverview() {
   const count = (s) => all.filter((h) => h.overall === s).length;
   const measuredCount = all.filter((h) => !isSynthetic(h) && h.latest_date).length;
   const demoCount = all.filter(isSynthetic).length;
-  const sourceNote = (level) => `${all.filter((h) => h.overall === level && isSynthetic(h)).length} demo included`;
+  const sourceNote = (level) => workspaceMode === "demo" ? `${all.filter((h) => h.overall === level && isSynthetic(h)).length} demo included` : "Your inspections";
   const exposed = all.filter((h) => h.drift_risk_from?.length && h.overall !== "act");
   const byId = new Map(hives().map((h) => [h.id, h]));
   const demoExposure = exposed.filter((h) => isSynthetic(h) || h.drift_risk_from.some((source) => isSynthetic(byId.get(source.id) || {}))).length;
@@ -478,7 +505,7 @@ function renderOverview() {
   const urgent = all.filter((h) => h.overall === "act").sort((a, b) => Number(isSynthetic(a)) - Number(isSynthetic(b)));
   $("attention").hidden = !urgent.length;
   $("attention").innerHTML = urgent.length
-    ? `<div class="attention-head">${icon("alert")}Requires action (${urgent.length})</div>` +
+    ? `<div class="attention-head">${icon("alert")}${workspaceMode === "demo" ? "Example alerts" : "Requires action"} (${urgent.length})</div>` +
       urgent
         .map(
           (h) =>
@@ -504,6 +531,7 @@ function renderOverview() {
     )
     .join("");
   renderHiveGrid();
+  if (typeof renderImportedApiaries === "function") renderImportedApiaries(all, farm);
 }
 
 function renderHiveGrid() {
@@ -550,7 +578,7 @@ function hiveRow(h) {
   return `<tr class="${syn ? "" : "measured-row"}">
     <td class="strong"><a href="#history" data-hive="${esc(h.id)}" data-destination="history" style="text-decoration:none">${esc(displayName(h))}</a></td>
     <td class="muted col-farm">${esc(farmName(h.farm_id))}</td>
-    <td>${syn ? '<span class="tag demo">Demo data</span>' : h.latest_date ? '<span class="tag measured">Measured</span>' : '<span class="tag">No inspection</span>'}</td>
+    <td>${syn ? '<span class="tag demo">Demo data</span>' : h.latest_date ? '<span class="tag measured">Measured</span>' : h.field_archive ? '<span class="tag">Research archive</span>' : '<span class="tag">No inspection</span>'}</td>
     <td>${badge(s)}${["act", "watch"].includes(s) ? `<small class="status-reason">${esc(primaryReason(h))}</small>` : ""}</td>
     <td class="num strong">${h.mites_per_day != null ? `${num(h.mites_per_day)} /d` : "—"}</td>
     <td class="num">${delta}</td>
@@ -576,7 +604,7 @@ function populateSamples() {
     ? state.samples.frames
         .map(
           (f) =>
-            `<label class="sample-tile" title="${esc(f.name.replaceAll("_", " "))}"><input type="checkbox" class="frame-sample" value="${esc(f.name)}" ${checked.has(f.name) ? "checked" : ""} aria-label="${esc(f.name)}"><img src="/api/sample_preview/frame/${encodeURIComponent(f.name)}?max_side=240" alt="" loading="lazy" decoding="async"></label>`,
+            `<label class="sample-tile" title="${esc(f.name.replaceAll("_", " "))}"><input type="checkbox" class="frame-sample" value="${esc(f.name)}" ${checked.has(f.name) ? "checked" : ""} aria-label="${esc(f.name)}"><img src="${apiUrl(`/api/sample_preview/frame/${encodeURIComponent(f.name)}?max_side=240`)}" alt="" loading="lazy" decoding="async"></label>`,
         )
         .join("")
     : '<p class="hint">No reference frames downloaded.</p>';
@@ -693,12 +721,12 @@ function renderPreviews() {
   $("board-preview").innerHTML = boardFile
     ? filePreview(boardFile, "board", 0)
     : sample
-      ? preview(`/api/sample_preview/board/${encodeURIComponent(sample)}?max_side=600`, sample, "sample-board", 0)
+      ? preview(apiUrl(`/api/sample_preview/board/${encodeURIComponent(sample)}?max_side=600`), sample, "sample-board", 0)
       : "";
   $("frames-preview").innerHTML =
     frameFiles.map((f, i) => filePreview(f, "frames", i)).join("") +
     checkedFrameSamples()
-      .map((name) => preview(`/api/sample_preview/frame/${encodeURIComponent(name)}?max_side=400`, name, "sample-frame", name))
+      .map((name) => preview(apiUrl(`/api/sample_preview/frame/${encodeURIComponent(name)}?max_side=400`), name, "sample-frame", name))
       .join("");
   buildLocalPreviews([boardFile, ...frameFiles].filter(Boolean), generation);
   updateSummary();
@@ -845,7 +873,7 @@ function attachJob(job) {
   $("job-feed").textContent = "";
   setProgress(0);
   $("job-title").textContent = job.kind === "inspection" ? "Running inspection…" : "Running benchmark…";
-  const stream = new EventSource(`/api/jobs/${encodeURIComponent(job.id)}/stream`);
+  const stream = new EventSource(apiUrl(`/api/jobs/${encodeURIComponent(job.id)}/stream`));
   eventStream = stream;
   stream.onmessage = async (message) => {
     if (activeJob?.id !== job.id) return;
@@ -902,7 +930,16 @@ function attachJob(job) {
 /* ── Colony Records & Audit Trail ────────────────────────────────────── */
 async function loadHistory() {
   historyController?.abort();
+  if ($("history-field-archive")) {
+    $("history-field-archive").hidden = true;
+    $("history-field-archive").innerHTML = "";
+    $("history-photo-records").hidden = false;
+    document.querySelector('[data-tour="explore"]').hidden = false;
+  }
   const hive = selectedHive;
+  $("history-description").textContent = hives().find(h => h.id === hive)?.field_archive
+    ? "Published field observations with original dates and units. Any new photo inspections are kept separately below."
+    : "Every inspection of a hive, with photos, evidence and the report.";
   if (!hive) {
     $("history-trends").innerHTML = "";
     $("history-list").innerHTML = '<li class="tl-empty">No colonies registered.</li>';
@@ -927,7 +964,7 @@ async function loadHistory() {
     if (hive !== selectedHive || controller.signal.aborted) return;
     historyData = data;
     historyHive = hive;
-    $("export-hive").href = `/api/export/${encodeURIComponent(hive)}.zip`;
+    $("export-hive").href = apiUrl(`/api/export/${encodeURIComponent(hive)}.zip`);
     $("export-hive").hidden = false;
     const link = $("job-result-link");
     if (link.dataset.resultHive === hive && data.inspections.some((r) => r.id === link.dataset.resultRecord)) {
@@ -936,6 +973,13 @@ async function loadHistory() {
     }
     if (!data.inspections.some((r) => r.id === selectedRecord)) selectedRecord = data.inspections.at(-1)?.id || null;
     $("history-count").textContent = data.inspections.length || "0";
+    if (typeof renderImportedHistory === "function") renderImportedHistory(data.field_history);
+    if (data.field_history && !data.inspections.length) {
+      $("history-trends").innerHTML = "";
+      $("history-photo-records").hidden = true;
+      document.querySelector('[data-tour="explore"]').hidden = true;
+      return;
+    }
     if (!data.inspections.length) {
       $("history-trends").innerHTML = "";
       $("history-list").innerHTML = '<li class="tl-empty">No records.</li>';
@@ -970,7 +1014,7 @@ function renderTimeline() {
         <i class="tl-dot ${s}"></i>
         <span class="tl-main">
           <strong>${esc(dateLabel(rec.date))}</strong>
-          <small>${rec.demo_capture ? "Demo video analysis" : STATUS[s]}${mpd != null ? ` · ${num(mpd)}/d` : ""}${rec.synthetic ? ", demo" : hasEv ? ", with evidence" : ""}</small>
+          <small>${rec.demo_capture ? "Sample analysis" : STATUS[s]}${mpd != null ? ` · ${num(mpd)}/d` : ""}${rec.synthetic ? ", demo" : hasEv ? ", with evidence" : ""}</small>
         </span>
       </button></li>`;
     })
@@ -1002,6 +1046,10 @@ function sparkline(points, label) {
 }
 
 function renderTrends(rows) {
+  if (!rows.length) {
+    $("history-trends").innerHTML = "";
+    return;
+  }
   const specs = [
     ["Mites per day", "mites_per_day", "", true],
     ["Honey", "honey_kg_hive_est", "kg", false],
@@ -1086,11 +1134,12 @@ function renderRecord(hiveId, rec, target) {
   const report = rec.report;
   const files = rec.files || {};
   const captures = Object.entries(rec.inputs?.capture_sources || {});
-  const demoCapture = captures.some(([, source]) => source.source === "demo");
+  const demoCapture = Boolean(rec.demo_capture) || captures.some(([, source]) => source.source === "demo");
+  const sourceCredits = (rec.provenance?.sources || []).map((source) => `<li>${esc(source.title)} · ${esc(source.author)} · ${esc(source.license)}</li>`).join("");
   const captureHtml = captures.length ? `<div class="capture-provenance"><h4>Captured photos</h4><ul>${captures.map(([photo, source]) => `<li><strong>${esc(photo.replaceAll("_", " "))}</strong> · ${source.source === "camera" ? "Camera" : source.source === "demo" ? "Demo video (recorded)" : "Uploaded video (recorded)"}<br>${esc(source.name)} · ${esc(source.captured_at)} · ${esc(source.width)} × ${esc(source.height)} px${source.video_seconds == null ? "" : ` · video ${esc(Number(source.video_seconds).toFixed(1))}s`}${source.source === "demo" ? ' · <a href="https://commons.wikimedia.org/wiki/File:Queen_honey_bee_laying_eggs.webm" target="_blank" rel="noopener">Source</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener">CC BY-SA 3.0</a> (excerpt, captured still and analysis annotations)' : ""}</li>`).join("")}</ul></div>` : "";
   const s = statusOf(rec.status?.overall);
   const fileUrl = (name, size = 1400) =>
-    `/api/file/${encodeURIComponent(hiveId)}/${encodeURIComponent(rec.id)}/${encodeURIComponent(name)}?max_side=${size}`;
+    apiUrl(`/api/file/${encodeURIComponent(hiveId)}/${encodeURIComponent(rec.id)}/${encodeURIComponent(name)}?max_side=${size}`);
 
   const metricDefs = [
     ["Mites per day", m.mites_per_day, "", m.mites_per_day_change],
@@ -1105,7 +1154,7 @@ function renderRecord(hiveId, rec, target) {
     ? `<div class="metric-grid">${metricDefs
         .map(
           ([label, v, unit, ch]) =>
-            `<div class="metric"><span>${label}</span><strong>${num(v)}${unit ? `<small>${unit}</small>` : ""}${ch != null && Math.abs(ch) >= 0.05 ? `<span class="delta ${ch > 0 ? "up" : ""}" style="margin-left:6px">${ch > 0 ? "+" : "−"}${num(Math.abs(ch))}</span>` : ""}</strong></div>`,
+            `<div class="metric"><span>${label}</span><strong>${num(v)}${unit ? `<small>${unit}</small>` : ""}${!demoCapture && ch != null && Math.abs(ch) >= 0.05 ? `<span class="delta ${ch > 0 ? "up" : ""}" style="margin-left:6px">${ch > 0 ? "+" : "−"}${num(Math.abs(ch))}</span>` : ""}</strong></div>`,
         )
         .join("")}</div>`
     : "";
@@ -1200,13 +1249,14 @@ function renderRecord(hiveId, rec, target) {
   el.innerHTML = `<article class="panel record">
     <header class="record-head">
       <div>
-        <h2>${esc(dateLabel(rec.date))} ${badge(s)} ${rec.synthetic ? '<span class="tag demo">Demo data</span>' : demoCapture ? '<span class="tag demo">Demo video analysis</span>' : '<span class="tag measured">Measured</span>'}</h2>
+        <h2>${esc(dateLabel(rec.date))} ${badge(s)} ${rec.synthetic ? '<span class="tag demo">Demo data</span>' : demoCapture ? '<span class="tag demo">Sample analysis</span>' : '<span class="tag measured">Measured</span>'}</h2>
         <p>${esc(hiveName(hiveId))}${rec.models?.segmentation && !rec.synthetic ? `, ${esc(rec.models.segmentation)} and ${esc(rec.models.reasoning)}` : ""}</p>
       </div>
       <button class="btn sm record-download" type="button">${icon("download")}Export JSON</button>
     </header>
     <div class="record-body">
-      ${demoCapture ? '<div class="alert warn"><p>Includes prerecorded demo footage. This analysis is kept in history and excluded from hive status and trends.</p></div>' : ""}
+      ${demoCapture ? `<div class="alert warn"><p>Analysis of sample media. Excluded from live hive status and trends. ${esc(rec.provenance?.note || "These photos do not establish the condition of this colony.")}</p></div>` : ""}
+      ${sourceCredits ? `<details><summary>Photo sources and licenses</summary><ul>${sourceCredits}</ul><p>Source URLs and modification details are included in Export JSON and the hive ZIP.</p></details>` : ""}
       ${rec.synthetic ? '<div class="alert warn">' + icon("info") + "<p>Demo record. These numbers and recommendations are simulated. Do not use this record to make decisions about a real colony.</p></div>" : ""}
       <div class="report report-lead">${reportHtml}</div>
       ${flags}
@@ -1260,8 +1310,8 @@ function renderProofGallery() {
 
   wrap.innerHTML = items
     .map((item) => {
-      const fullUrl = `/api/demo_asset/${encodeURIComponent(item.file)}?max_side=2400`;
-      const thumbUrl = `/api/demo_asset/${encodeURIComponent(item.file)}?max_side=800`;
+      const fullUrl = apiUrl(`/api/demo_asset/${encodeURIComponent(item.file)}?max_side=2400`);
+      const thumbUrl = apiUrl(`/api/demo_asset/${encodeURIComponent(item.file)}?max_side=800`);
       return `<article class="proof-card">
         <button type="button" data-image="${esc(fullUrl)}" aria-label="Enlarge ${esc(item.title)}">
           <img src="${esc(thumbUrl)}" alt="${esc(item.title)}" loading="lazy" decoding="async" />
@@ -1281,7 +1331,7 @@ function renderBenchmark() {
   const s = b?.summary;
   const rows = b?.images || [];
   $("benchmark-provenance").textContent = s
-    ? `${s.images} test boards with ${s.experts_total} mites marked by experts. Boards 1–${s.skipped_first ?? 8} were used to tune the checks and are not counted here.`
+    ? `${s.images} evaluation boards with ${s.experts_total} expert annotations. Exploratory development included overlapping boards: this is not a fully untouched test set.`
     : "No saved benchmark yet.";
   $("benchmark-stats").innerHTML =
     kpi("F1", num(s?.sam_f1, 2), s?.cv_f1 != null ? `Classic method: ${num(s.cv_f1, 2)}` : "Test boards", "") +
@@ -1556,6 +1606,12 @@ window.addEventListener("pageshow", (event) => {
 
 /* ── Boot ────────────────────────────────────────────────────────────── */
 hydrateIcons();
+applyWorkspaceMode();
+$("workspace-mode").addEventListener("change", (event) => {
+  const url = new URL(location.href);
+  url.searchParams.set("mode", event.target.value);
+  location.assign(url.href);
+});
 applyTheme(store.get("corp_theme", "light"));
 applyPalette(document.documentElement.dataset.palette);
 restoreDraft();

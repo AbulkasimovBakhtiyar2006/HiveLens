@@ -164,7 +164,7 @@ def test_store_and_export():
     assert any(n.endswith("metrics.csv") for n in names) and any(n.endswith("board.jpg") for n in names)
 
 
-@pytest.mark.parametrize("capture_source", ["camera", "demo"])
+@pytest.mark.parametrize("capture_source", ["camera", "demo", "sample"])
 def test_pipeline_end_to_end(monkeypatch, capture_source):
     """Full inspection with fake SAM + fake Muse Spark: measurements, overlays, agent, storage."""
     from hivelens import pipeline
@@ -199,11 +199,16 @@ def test_pipeline_end_to_end(monkeypatch, capture_source):
     captures = {"frame_1": {"source": capture_source, "name": "Test camera", "captured_at": "2026-11-04T16:00:00Z",
                             "width": 800, "height": 500, "video_seconds": None}}
     rec = pipeline.run_inspection(hive["id"], "2026-11-04", frames=[frame], board=board, days_on_board=2, frames_in_hive=8,
-                                board_tile=1344, capture_sources=captures)
+                                board_tile=1344, capture_sources=captures,
+                                sample_sources={"board_sample": "public.jpg"} if capture_source == "sample" else None)
     assert rec["inputs"]["capture_sources"]["frame_1"]["source"] == capture_source
     saved = store.inspections(hive["id"])[-1]
     assert saved["inputs"]["capture_sources"] == rec["inputs"]["capture_sources"]
-    assert bool(saved.get("demo_capture")) == (capture_source == "demo")
+    assert bool(saved.get("demo_capture")) == (capture_source in ("demo", "sample"))
+    if capture_source == "sample":
+        assert saved["provenance"]["board_sample"] == "public.jpg"
+        assert store.metrics_rows(hive["id"]) == []
+        assert store.history_before(hive["id"], "2026-11-05") == []
     if capture_source == "demo":
         assert saved["inputs"]["capture_sources"]["frame_1"]["license_url"].endswith("/by-sa/3.0/")
     m = rec["metrics"]

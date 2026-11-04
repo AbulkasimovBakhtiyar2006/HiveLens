@@ -67,3 +67,14 @@ test('first entry welcomes newcomers without hijacking direct report links', () 
   assert.equal(run('entryView("overview", true)'), 'overview');
   assert.equal(run('entryView("welcome", true)'), 'welcome');
 });
+
+test('public sample photos are labelled and do not display a colony trend', () => {
+  const {run,node} = ui();
+  run(`renderRecord('one', {id:'sample',date:'2026-11-04',demo_capture:true,metrics:{mites_per_day:6,mites_per_day_change:4},provenance:{note:'Two unrelated photographs.'}}, 'result')`);
+  const html = node('result').innerHTML;
+  assert.match(html, /Sample analysis/);
+  assert.match(html, /Two unrelated photographs/);
+  assert.doesNotMatch(html, /tag measured|class="delta/);
+  run('renderTrends([])');
+  assert.equal(node('history-trends').innerHTML, '');
+});

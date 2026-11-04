@@ -18,7 +18,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import config
+from . import config, workspace
 
 
 def _slug(text: str) -> str:
@@ -26,14 +26,14 @@ def _slug(text: str) -> str:
 
 
 def _hive_dir(hive_id: str) -> Path:
-    return config.HIVES_DIR / hive_id
+    return workspace.hives_dir() / hive_id
 
 
 def list_hives() -> list[dict]:
-    if not config.HIVES_DIR.exists():
+    if not workspace.hives_dir().exists():
         return []
     out = []
-    for p in sorted(config.HIVES_DIR.glob("*/hive.json")):
+    for p in sorted(workspace.hives_dir().glob("*/hive.json")):
         out.append(json.loads(p.read_text()))
     return out
 
@@ -94,7 +94,7 @@ def update_hive(hive_id: str, **fields) -> dict:
 # A farm is one site (apiary) with its own yard. Hives belong to at most one farm.
 
 def _farms_path() -> Path:
-    return config.HIVES_DIR / "farms.json"
+    return workspace.hives_dir() / "farms.json"
 
 
 def list_farms() -> list[dict]:
@@ -114,12 +114,12 @@ def create_farm(name: str, location: str = "") -> dict:
     while farm_id in taken:
         farm_id, n = f"{base}-{n}", n + 1
     farm = {"id": farm_id, "name": name, "location": location, "created": datetime.now().isoformat(timespec="seconds")}
-    config.HIVES_DIR.mkdir(parents=True, exist_ok=True)
+    workspace.hives_dir().mkdir(parents=True, exist_ok=True)
     _farms_path().write_text(json.dumps([*farms, farm], indent=2))
     return farm
 
 
-FARM_FIELDS = ("name", "location", "maps_url", "breed", "lat", "lon", "place", "country_code", "elevation_m")
+FARM_FIELDS = ("name", "location", "maps_url", "breed", "lat", "lon", "place", "country_code", "elevation_m", "field_archive")
 
 
 def update_farm(farm_id: str, **fields) -> dict:
@@ -142,6 +142,21 @@ def update_farm(farm_id: str, **fields) -> dict:
 def ensure_farm(name: str, location: str = "") -> dict:
     """The farm with this name, created if it does not exist yet."""
     return next((f for f in list_farms() if f["name"] == name), None) or create_farm(name, location)
+
+
+def field_history(hive_id: str) -> dict | None:
+    """Imported study observations are not photo inspections or current health assessments."""
+    path = _hive_dir(hive_id) / "field_history.json"
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def save_field_history(hive_id: str, archive: dict, summary: dict) -> None:
+    folder = _hive_dir(hive_id)
+    metadata = folder / "hive.json"
+    hive = json.loads(metadata.read_text())  # An existing registered hive is required.
+    (folder / "field_history.json").write_text(json.dumps(archive, ensure_ascii=False, separators=(",", ":")))
+    hive["field_archive"] = summary
+    metadata.write_text(json.dumps(hive, ensure_ascii=False, indent=2))
 
 
 def inspections(hive_id: str) -> list[dict]:
@@ -214,8 +229,8 @@ def export_zip(hive_id: str) -> bytes:
         z.writestr(
             f"{hive_id}/README.txt",
             "HiveLens export\n"
-            "metrics.csv      one row per inspection (all numbers are measured from SAM 3.1 masks)\n"
-            "<date>/inspection.json  report, verified claims, agent trace\n"
+            "metrics.csv      one row per included inspection; check provenance and units\n"
+            "<date>/inspection.json  source, report, claims and available agent trace\n"
             "<date>/*.jpg     original photos and overlays\n",
         )
     return buf.getvalue()
