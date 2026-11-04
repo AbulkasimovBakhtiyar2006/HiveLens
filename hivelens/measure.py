@@ -89,6 +89,24 @@ def mite_body(board_arr: np.ndarray, center: tuple[float, float]) -> dict | None
             "ellipse": ellipse}
 
 
+def body_verdict(b: dict | None) -> str | None:
+    """Why a measured body is not a mite, or None if it passes every physical check."""
+    lo, hi = MITE_AREA_FRAC
+    if b is None:
+        return "no dark body under the detection"
+    if b["area_frac"] < lo:
+        return "too small for a mite"
+    if b["area_frac"] > hi:
+        return "too large for a mite"
+    if b["redness"] < MITE_MIN_REDNESS:
+        return f"not reddish-brown (redness {b['redness']:.0f})"
+    if b["aspect"] > MITE_MAX_ASPECT:
+        return f"too elongated for a mite (aspect {b['aspect']:.1f})"
+    if b["fill"] < MITE_MIN_FILL:
+        return f"ragged outline, not an oval (fill {b['fill']:.2f})"
+    return None
+
+
 def filter_mites(
     instances: list[Instance], board: Image.Image | None = None, min_conf: float = 0.35
 ) -> tuple[list[Instance], list[tuple[Instance, str]]]:
@@ -112,22 +130,11 @@ def filter_mites(
 
     if board is not None:
         arr = np.asarray(board.convert("RGB"))
-        lo, hi = MITE_AREA_FRAC
         kept = []
         for inst in pool:
-            b = mite_body(arr, inst.center)
-            if b is None:
-                rejected.append((inst, "no dark body under the detection"))
-            elif b["area_frac"] < lo:
-                rejected.append((inst, "too small for a mite"))
-            elif b["area_frac"] > hi:
-                rejected.append((inst, "too large for a mite"))
-            elif b["redness"] < MITE_MIN_REDNESS:
-                rejected.append((inst, f"not reddish-brown (redness {b['redness']:.0f})"))
-            elif b["aspect"] > MITE_MAX_ASPECT:
-                rejected.append((inst, f"too elongated for a mite (aspect {b['aspect']:.1f})"))
-            elif b["fill"] < MITE_MIN_FILL:
-                rejected.append((inst, f"ragged outline, not an oval (fill {b['fill']:.2f})"))
+            why = body_verdict(mite_body(arr, inst.center))
+            if why:
+                rejected.append((inst, why))
             else:
                 kept.append(inst)
         return kept, rejected
@@ -163,6 +170,7 @@ def measure_varroa(
     tile: int = GRID_TILE,
     refine: bool = True,
     muse_vote: bool = True,
+    gate: bool = False,
     progress=None,
 ) -> VarroaResult:
     """Pass 1: SAM 3.1 over a grid of `tile` px crops.
@@ -170,7 +178,14 @@ def measure_varroa(
             SAM 3.1 on a tight 300 px crop, where a mite is large enough to be recognised.
     Pass 3: the dark spots SAM still did not recognise go to Muse Spark on numbered
             contact sheets; its votes become candidates.
-    Every candidate from every pass then has to pass the physical checks."""
+    Every candidate from every pass then has to pass the physical checks.
+
+    gate=True (experimental, off): pass-3 spots are proposed on green+blue darkness and only
+    spots that already pass the physical checks are shown to Muse Spark (~10 per board instead
+    of ~145). Tested on 44 untouched boards (629 mites): F1 0.702 -> 0.663, recall 0.653 -> 0.610.
+    Muse judges a tile relative to the rest of its sheet: among wax crumbs a mite stands out,
+    on a sheet of mite-like spots it said "no" to 79 mites it had counted on the old sheets.
+    (On the 12 boards used to design it, F1 rose 0.721 -> 0.745: too few boards to trust.)"""
     board = board.convert("RGB")
     say = progress or (lambda i, n: None)
     n_grid = len(list(sam.tiles(*board.size, tile, 64)))
@@ -187,7 +202,12 @@ def measure_varroa(
     if muse_vote:
         from . import vote
 
-        centers = unexplained_spots(board, found)[:MAX_VOTE]
+        if gate:
+            arr = np.asarray(board)
+            spots = unexplained_spots(board, found, channel="gb")
+            centers = [c for c in spots if body_verdict(mite_body(arr, c)) is None][:MAX_VOTE]
+        else:
+            centers = unexplained_spots(board, found)[:MAX_VOTE]
         if centers:
             voted = vote.vote_mites(board, centers)
             r = max(12, int(0.0035 * board.size[0]))
@@ -203,11 +223,11 @@ def measure_varroa(
 MUSE_CONCEPT = "varroa mite (Muse Spark vote)"
 
 
-def unexplained_spots(board: Image.Image, found: list[Instance]) -> list[tuple[float, float]]:
+def unexplained_spots(board: Image.Image, found: list[Instance], channel: str = "max") -> list[tuple[float, float]]:
     """Centres of dark mite-sized blobs that no detection so far sits on, darkest first."""
     centers = [i.center for i in found]
     out = []
-    for x1, y1, x2, y2 in classic_cv_mites(board):
+    for x1, y1, x2, y2 in classic_cv_mites(board, channel):
         cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
         if not any(abs(cx - fx) < 60 and abs(cy - fy) < 60 for fx, fy in centers):
             out.append((cx, cy))
@@ -236,17 +256,25 @@ def refine_windows(board: Image.Image, found: list[Instance]) -> list[tuple[int,
     return wins
 
 
-def classic_cv_mites(board: Image.Image) -> list[tuple[float, float, float, float]]:
+def classic_cv_mites(board: Image.Image, channel: str = "max") -> list[tuple[float, float, float, float]]:
     """Mite-sized blobs much darker than the board. No model involved.
 
     Colour is unreliable (under the board lighting a mite's core reads grey-violet
     with low saturation), but darkness is not: mite cores sit at ~40-70 brightness
     on a ~220 board, while wax crumbs are clearly lighter. Used as the benchmark
     baseline and to propose spots for the 300 px SAM re-check, darkest first.
+
+    channel="max": HSV value (the benchmark baseline and the SAM re-check).
+    channel="gb":  mean of green and blue. On the held-out boards 16 of 128 mites had
+                   cores at ~85-105 in max(RGB), just above the threshold, but ~65-85 in
+                   G and B; this channel finds 126/128 vs 111/128, with ~35% more blobs.
     """
     img = np.array(board.convert("RGB"))
     h, w = img.shape[:2]
-    val = img.max(axis=2)  # HSV value
+    if channel == "gb":
+        val = ((img[..., 1].astype(np.uint16) + img[..., 2]) // 2).astype(np.uint8)
+    else:
+        val = img.max(axis=2)  # HSV value
     bg = float(np.median(val))
     thr = min(90.0, 0.4 * bg)  # a softer threshold merges mites with nearby crumbs (tested: worse)
     mask = cv2.morphologyEx((val < thr).astype(np.uint8) * 255, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))

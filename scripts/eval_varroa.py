@@ -133,13 +133,13 @@ def detail_record(name, img, gt, kept, rejected, out):
 
 def evaluate(n: int = 12, skip: int = 8, split: str = "validation", tile: int = measure.GRID_TILE,
              refine: bool = True, muse: bool = True, dry_run: bool = False,
-             log=print, progress=None) -> dict:
+             log=print, progress=None, gate: bool = False, out: Path | None = None) -> dict:
     """Runs the benchmark and writes data/eval/varroa_eval.json. Also called from the app."""
     root = config.DATA_DIR / "varroa"
     pairs = pick_images(root, n + skip, split)[skip:]
     if not pairs:
         raise SystemExit("No images found. Run: python scripts/download_varroa.py")
-    out = config.DATA_DIR / "eval"
+    out = Path(out) if out else config.DATA_DIR / "eval"
     out.mkdir(parents=True, exist_ok=True)
 
     rows, sam_m, cv_m, details = [], [], [], []
@@ -154,7 +154,7 @@ def evaluate(n: int = 12, skip: int = 8, split: str = "validation", tile: int = 
         cv_m.append(match(cv_boxes, gt))
         if not dry_run:
             res = measure.measure_varroa(
-                img, 1, tile=tile, refine=refine, muse_vote=muse,
+                img, 1, tile=tile, refine=refine, muse_vote=muse, gate=gate,
                 progress=(lambda i, m, k=k: progress(k - 1 + i / m, len(pairs))) if progress else None)
             kept, rejected = res.kept, res.rejected
             sam_boxes = [i.box for i in kept]
@@ -189,7 +189,7 @@ def evaluate(n: int = 12, skip: int = 8, split: str = "validation", tile: int = 
                "sam_mae": mae("sam"), "cv_mae": mae("classic_cv"),
                "sam_precision": pooled(sam_m, "precision"), "sam_recall": pooled(sam_m, "recall"),
                "sam_f1": pooled(sam_m, "f1"), "cv_f1": pooled(cv_m, "f1"),
-               "tile": tile, "refine": refine, "muse_vote": muse, "skipped_first": skip,
+               "tile": tile, "refine": refine, "muse_vote": muse, "gate": gate, "skipped_first": skip,
                "models": [config.SEGMENT_MODEL] + ([config.REASONING_MODEL] if muse else [])}
     result = {
         "summary": summary,
@@ -213,9 +213,12 @@ def main() -> None:
     ap.add_argument("--tile", type=int, default=measure.GRID_TILE)
     ap.add_argument("--no-refine", action="store_true", help="skip the 300 px re-check pass")
     ap.add_argument("--no-muse", action="store_true", help="skip the Muse Spark vote on unexplained spots")
+    ap.add_argument("--gate", action="store_true", help="experimental: G+B spots, physical pre-check before Muse (tested worse)")
+    ap.add_argument("--out", type=Path, default=None, help="output folder (default data/eval)")
     ap.add_argument("--dry-run", action="store_true", help="skip SAM (no API calls)")
     args = ap.parse_args()
-    evaluate(args.n, args.skip, args.split, args.tile, not args.no_refine, not args.no_muse, args.dry_run)
+    evaluate(args.n, args.skip, args.split, args.tile, not args.no_refine, not args.no_muse, args.dry_run,
+             gate=args.gate, out=args.out)
 
 
 if __name__ == "__main__":

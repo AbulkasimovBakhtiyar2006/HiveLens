@@ -48,21 +48,35 @@ def _ask(sheet: Image.Image) -> list[int]:
     key = hashlib.sha256(config.REASONING_MODEL.encode() + PROMPT.encode() + jpeg_bytes(sheet, 90)).hexdigest()
     path = config.CACHE_DIR / "muse_votes" / f"{key}.json"
     if path.exists():
-        return json.loads(path.read_text())["mites"]
-    resp = client().chat.completions.create(
-        model=config.REASONING_MODEL,
-        messages=[{"role": "user", "content": [
-            {"type": "text", "text": PROMPT},
-            {"type": "image_url", "image_url": {"url": data_url(sheet, quality=90)}},
-        ]}],
-        reasoning_effort="low",
-        max_completion_tokens=2000,
-    )
-    text = resp.choices[0].message.content or ""
+        cached = json.loads(path.read_text())
+        if cached.get("raw", "").strip():  # an empty answer is a failed call, not "no mites": ask again
+            return cached["mites"]
+    # The model sometimes returns no content at all (12% of cached sheets did), which used to be
+    # read as "no mites" and wiped out whole boards. Retry with a larger budget; never cache a blank.
+    text, finish = "", None
+    for budget in (2000, 4000, 8000):
+        resp = client().chat.completions.create(
+            model=config.REASONING_MODEL,
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": PROMPT},
+                {"type": "image_url", "image_url": {"url": data_url(sheet, quality=90)}},
+            ]}],
+            reasoning_effort="low",
+            max_completion_tokens=budget,
+        )
+        text = resp.choices[0].message.content or ""
+        finish = resp.choices[0].finish_reason
+        if re.search(r"\[([\d,\s]*)\]", text):
+            break
     m = re.search(r"\[([\d,\s]*)\]", text)
-    mites = [int(x) for x in re.findall(r"\d+", m.group(1))] if m else []
+    if not m:  # don't fail the whole inspection, but don't cache it either: next run asks again
+        import sys
+        print(f"WARNING: Muse Spark gave no usable answer for a contact sheet (finish_reason={finish})",
+              file=sys.stderr)
+        return []
+    mites = [int(x) for x in re.findall(r"\d+", m.group(1))]
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"mites": mites, "raw": text}))
+    path.write_text(json.dumps({"mites": mites, "raw": text, "finish_reason": finish}))
     return mites
 
 

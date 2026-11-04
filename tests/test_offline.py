@@ -245,10 +245,38 @@ def test_muse_vote_contact_sheet(monkeypatch):
         return [1, 2]  # votes for the two darkest spots: the debris and the first mite
 
     monkeypatch.setattr(vote, "_ask", fake_ask)
-    res = measure.measure_varroa(board, 1)
+    res = measure.measure_varroa(board, 1)  # no pre-check: Muse sees the debris too
     assert seen["size"] == (vote.COLS * vote.TILE, vote.TILE)  # one row of three cut-outs
     assert res.count == 1 and res.kept[0].concept == measure.MUSE_CONCEPT
     assert any("reddish" in why for _, why in res.rejected)  # Muse voted for the debris, the engine refused it
+
+
+def test_gate_shows_muse_only_plausible_spots(monkeypatch):
+    """Spots that fail the physical checks never reach Muse Spark; a greyish mite core that
+    max(RGB) misses is still proposed, because it is dark in green and blue."""
+    from PIL import ImageDraw
+
+    from hivelens import vote
+
+    board = Image.new("RGB", (1200, 900), (225, 228, 240))
+    d = ImageDraw.Draw(board)
+    d.ellipse((702, 401, 712, 409), fill=(80, 35, 30))    # mite
+    d.ellipse((300, 300, 310, 308), fill=(30, 45, 40))    # greenish-black debris
+    d.ellipse((900, 600, 910, 608), fill=(100, 70, 62))   # greyish mite core: max(RGB)=100 > threshold 90
+    monkeypatch.setattr(sam, "raw_segment", lambda img, concept, use_cache=True: "")
+    assert not any(abs((b[0] + b[2]) / 2 - 905) < 6 for b in measure.classic_cv_mites(board))
+    seen = {}
+
+    def fake_ask(sheet):
+        seen["size"] = sheet.size
+        return [1, 2]
+
+    monkeypatch.setattr(vote, "_ask", fake_ask)
+    res = measure.measure_varroa(board, 1, gate=True)
+    assert len(res.vote_centers) == 2  # debris gated out before the vote
+    assert all(abs(cx - 305) > 20 for cx, _ in res.vote_centers)
+    assert res.count == 2 and not res.rejected
+    assert any(abs(i.center[0] - 905) < 6 for i in res.kept)
 
 
 def test_shape_checks_reject_rods_and_crumbs():

@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -99,7 +100,14 @@ def raw_segment(image: Image.Image, concept: str, use_cache: bool = True) -> str
     path = _cache_path(concept, payload)
     if use_cache and path.exists():
         return json.loads(path.read_text())["raw"]
-    raw = _call_sam(image, concept)
+    for attempt in range(4):  # the API sometimes fails one crop ("server_error"); don't lose the whole board
+        try:
+            raw = _call_sam(image, concept)
+            break
+        except RuntimeError:
+            if attempt == 3:
+                raise
+            time.sleep(2 * 2 ** attempt)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"concept": concept, "size": image.size, "raw": raw}))
     return raw
