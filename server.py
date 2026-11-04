@@ -29,7 +29,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from hivelens import __version__, access, commons, config, engine, place, settings, store, usage
+from hivelens import __version__, access, commons, config, engine, guest_demo, place, settings, store, usage
 from hivelens.viz import CLASS_COLORS, CLASS_LABELS
 
 Image.MAX_IMAGE_PIXELS = None  # sticky-board photos are ~49 MP
@@ -520,6 +520,31 @@ def _run_inspection_job(job_id: str, payload: dict) -> None:
         usage.clear_context()
 
 
+def _run_guest_job(job_id: str, hive_id: str) -> None:
+    try:
+        from hivelens.pipeline import run_inspection
+        frame = open_image_path(config.ROOT / 'hivelens/examples/photo-analysis/frame_1.jpg')
+        frame.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+        usage.set_context(job_id=job_id, job_kind='inspection', hive_id=hive_id, label='Public live sample')
+        rec = run_inspection(
+            hive_id, date.today().isoformat(), frames=[frame], frames_in_hive=10,
+            note='Live demonstration on one public photograph, not a current colony observation. Hive size is an illustrative assumption.',
+            sample_sources={"sources": [guest_demo.SOURCE], "guest_demo": True},
+            progress=lambda msg, frac: _push_job_event(job_id, {"type": "progress", "msg": msg, "frac": frac}),
+            on_event=lambda event: _push_job_event(job_id, {"type": "agent_event", "event": event}),
+        )
+        with _JOBS_LOCK:
+            _JOBS[job_id].update(status='done', result=rec)
+        _push_job_event(job_id, {"type": "done", "result": rec})
+    except Exception as exc:
+        with _JOBS_LOCK:
+            _JOBS[job_id].update(status='error', error=str(exc))
+        _push_job_event(job_id, {"type": "error", "error": 'The sample analysis could not finish. Please explore a saved analysis; this attempt counted toward the shared quota.'})
+    finally:
+        usage.clear_context()
+        guest_demo.finish(job_id)
+
+
 def _run_benchmark_job(job_id: str, payload: dict) -> None:
     try:
         import importlib.util
@@ -668,7 +693,14 @@ class HiveLensHandler(BaseHTTPRequestHandler):
 
     @_workspace_request
     def do_GET(self) -> None:
-        if not access.authorize(self):
+        request_path = urllib.parse.urlsplit(self.path).path
+        public_job = False
+        if request_path.startswith('/api/jobs/') and request_path.endswith('/stream'):
+            job_id = request_path.removeprefix('/api/jobs/').removesuffix('/stream')
+            with _JOBS_LOCK:
+                job = _JOBS.get(job_id, {})
+                public_job = bool(job.get('public_demo') and job.get('workspace') == workspace.current() == 'demo')
+        if not access.authorize(self, public_job=public_job):
             return
         parsed = urllib.parse.urlsplit(self.path)
         path = parsed.path
@@ -791,6 +823,7 @@ class HiveLensHandler(BaseHTTPRequestHandler):
                 "has_api_key": config.has_api_key(),
                 "auth_enabled": bool(config.AUTH_PASSWORD),
                 "can_write": access.can_write(self),
+                "guest_demo": guest_demo.status() if workspace.current() == 'demo' else {"enabled": False},
                 "maps": {
                     "browser_key": config.GOOGLE_MAPS_BROWSER_KEY,
                     "map_id": config.GOOGLE_MAPS_MAP_ID,
@@ -999,10 +1032,46 @@ class HiveLensHandler(BaseHTTPRequestHandler):
             return
         parsed = urllib.parse.urlsplit(self.path)
         path = parsed.path
+        if path == '/api/guest-inspection':
+            if workspace.current() != 'demo' or not guest_demo.enabled():
+                self._send_json({'error': 'The public sample is available only in the Demo workspace.'}, 403)
+                return
+            try:
+                if self.headers.get('Transfer-Encoding') or not 0 <= int(self.headers.get('Content-Length', '0')) <= 64:
+                    raise ValueError
+            except ValueError:
+                self.close_connection = True
+                self._send_json({'error': 'The public sample accepts only an empty JSON object.'}, 400)
+                return
         try:
             body = self._read_json()
         except Exception as e:
             self._send_json({"error": f"Invalid JSON: {e}"}, 400)
+            return
+
+        if path == '/api/guest-inspection':
+            if body != {}:
+                self._send_json({'error': 'The sample photograph and analysis settings are fixed. Do not send photos or prompts.'}, 400)
+                return
+            job_id = uuid.uuid4().hex[:12]
+            try:
+                guest_demo.reserve(job_id)
+            except guest_demo.Unavailable as exc:
+                self._send_json({'error': str(exc)}, 429)
+                return
+            try:
+                hive = next((h for h in store.list_hives() if h['id'] == 'public-live-example'), None)
+                if hive is None:
+                    farm = next((f for f in store.list_farms() if f['name'] == 'Public photo examples'), None)
+                    hive = store.create_hive('Public live example', 'Public photograph, not a field colony', farm['id'] if farm else None)
+                with _JOBS_LOCK:
+                    _JOBS[job_id] = {'workspace': 'demo', 'public_demo': True, 'status': 'running', 'progress': 0.0, 'message': 'Starting the live sample…', 'events': []}
+                threading.Thread(target=copy_context().run, args=(_run_guest_job, job_id, hive['id']), daemon=True).start()
+            except Exception:
+                guest_demo.finish(job_id)
+                self._send_json({'error': 'Could not start the sample. Please explore a saved analysis.'}, 500)
+                return
+            self._send_json({'job_id': job_id, 'hive_id': hive['id']})
             return
 
         if path == "/api/profile_photo":

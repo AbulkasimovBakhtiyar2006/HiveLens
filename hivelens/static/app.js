@@ -318,12 +318,50 @@ async function renderWelcome() {
   }
 }
 
+/* One fixed live sample for visitors without owner sign-in: no upload, a shared quota and a cooldown on the server. */
+function renderGuestDemo() {
+  const g = state?.guest_demo || {};
+  const show = Boolean(g.enabled && state.can_write === false);
+  $("guest-run").hidden = !show;
+  $("guest-demo-hint").hidden = !show;
+  if (!show) return;
+  const minutes = Math.ceil((g.retry_after || 0) / 60);
+  const blocked = !g.remaining || g.running || minutes > 0 || Boolean(activeJob);
+  $("guest-run").disabled = blocked;
+  $("guest-demo-hint").textContent = !g.remaining
+    ? "The shared live runs have been used. Saved analyses stay available."
+    : g.running || activeJob
+      ? "A live sample is running now. Explore a saved analysis meanwhile."
+      : minutes > 0
+        ? `The live sample can run again in about ${minutes} min. ${g.remaining} of ${g.limit} shared runs left.`
+        : `Live run of SAM 3.1 and Muse Spark on one fixed public frame photo (John Pons, CC BY-SA 4.0), about 1–2 minutes. ${g.remaining} of ${g.limit} shared runs left.`;
+}
+
+async function startGuestDemo() {
+  const response = await fetch(apiUrl("/api/guest-inspection"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {
+    /* handled below */
+  }
+  if (!response.ok || data.error) throw new Error(data.error || `Could not start the sample (${response.status}).`);
+  attachJob({ id: data.job_id, kind: "inspection", hiveId: data.hive_id, startedAt: Date.now() });
+  $("job-title").textContent = "Running the live sample…";
+  renderGuestDemo();
+}
+
 async function loadState() {
   try {
     state = await api("/api/state");
     $("signout").hidden = !state.auth_enabled || !state.can_write;
     $("public-access-note").hidden = state.can_write !== false;
     document.body.classList.toggle("public-preview", state.can_write === false);
+    renderGuestDemo();
     applyWorkspaceMode();
     $("load-error").hidden = true;
     const measuredHives = state.apiary?.hives?.filter((h) => !isSynthetic(h)) || [];
@@ -1411,6 +1449,12 @@ document.addEventListener("click", (event) => {
     const measured = state?.apiary?.hives?.find((h) => !isSynthetic(h)) || state?.hives?.[0];
     if (measured) selectHive(measured.id, "history");
     else go("inspect");
+    return;
+  }
+  if (target.id === "guest-run") {
+    withButton(target, async () => {
+      await startGuestDemo();
+    }).finally(() => loadState());
     return;
   }
   if (target.id === "welcome-example" && welcomeExample) {

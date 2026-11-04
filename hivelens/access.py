@@ -9,7 +9,7 @@ import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 
-from . import config
+from . import config, guest_demo
 
 COOKIE = "hivelens_session"
 TTL = 8 * 60 * 60
@@ -87,7 +87,7 @@ def _login_page(handler, error: str = "", status: int = 200) -> None:
     handler.wfile.write(body)
 
 
-def authorize(handler, *, post: bool = False) -> bool:
+def authorize(handler, *, post: bool = False, public_job: bool = False) -> bool:
     """Handle login/logout and reject unauthenticated requests before any app route."""
     if not config.AUTH_PASSWORD:
         return True
@@ -97,6 +97,10 @@ def authorize(handler, *, post: bool = False) -> bool:
     if post and not same_origin(handler):
         handler._send_json({"error": "Cross-site request rejected."}, 403)
         return False
+    if post and path == "/api/guest-inspection" and guest_demo.enabled():
+        return True  # The endpoint accepts only an empty request and reserves quota before work.
+    if not post and public_job and config.PUBLIC_READ:
+        return True
     if path == "/login":
         if not post:
             _login_page(handler)

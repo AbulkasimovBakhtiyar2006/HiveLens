@@ -40,6 +40,7 @@ HIVES_DIR = DATA_DIR / "hives"
 AUTH_USER = os.getenv("HIVELENS_AUTH_USER", "judge")
 AUTH_PASSWORD = os.getenv("HIVELENS_AUTH_PASSWORD", "")
 PUBLIC_READ = os.getenv("HIVELENS_PUBLIC_READ", "0") == "1"
+GUEST_DEMO_LIMIT = max(0, int(os.getenv("HIVELENS_GUEST_DEMO_LIMIT", "0")))
 REQUIRE_AUTH = os.getenv("HIVELENS_REQUIRE_AUTH", "0") == "1"
 SECURE_COOKIES = os.getenv("HIVELENS_SECURE_COOKIES", "0") == "1"
 

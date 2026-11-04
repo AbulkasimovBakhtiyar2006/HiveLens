@@ -17,6 +17,10 @@ The bundled benchmark and public illustrations remain available when `/data` is 
 - `HIVELENS_PUBLIC_READ=1`: allow visitors to browse saved records, images, exports,
   study data and benchmarks without a password. All POST writes/model calls and
   job streams still require owner sign-in. Enable only for data intended to be public.
+- `HIVELENS_GUEST_DEMO_LIMIT=10`: with public read, let visitors start one fixed live
+  sample (a bundled public frame photo, no uploads or prompts). The count is a lifetime
+  quota shared by everyone and kept in `/data/guest-demo.sqlite3`; runs are at least
+  15 minutes apart and one at a time. Failed runs count too. `0` turns it off.
 - `HIVELENS_IMPORT_STUDY=1`: optionally import the attributed historical Serra da
   Lousa study apiary in Production at startup; repeated imports preserve inspections.
 
@@ -39,7 +43,8 @@ peer, which may be shared by visitors behind Railway's proxy.
 By default only `/healthz` and the sign-in page are public. With `HIVELENS_PUBLIC_READ=1`,
 the UI and explicitly allowed read APIs, images and exports are public. Owner profile
 details are omitted for guests; profile photos and job streams remain private.
-Changing data and running models always require a session. The deployment archive/image exclude local `.env`, private hive
+Changing data and running models require a session, except the fixed live sample
+above, whose own job stream is the only public one. The deployment archive/image exclude local `.env`, private hive
 data, model caches, IDE files and demo-video production assets.
 
 Deployment is billed under the Railway account's existing plan; model calls are
