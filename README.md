@@ -140,6 +140,11 @@ metrics; no current health state, mite-drop rate or physical yard layout is inve
    Download that hive’s data or open the scientific source.
 5. Switch to **Production** to see the clean workflow for a beekeeper’s own records,
    or run the study-apiary import command above to browse seven historical study hives there.
+6. **With your own Meta Model API key**, test it at scale: put the key in `.env`
+   (`MODEL_API_KEY=...`), run `python scripts/check_api.py`, then
+   `python scripts/download_varroa.py` (about 350 MB of public expert-annotated boards) and
+   `python scripts/eval_varroa.py --n 12 --skip 8`. Raise `--n` or add `--split all` for
+   more boards. New inspections on your own photos run from **New inspection**.
 
 **What we can accurately say:** “HiveLens includes real historical field observations
 from the published EFSA MUST-B study. Our separate photo-analysis workflow produces
