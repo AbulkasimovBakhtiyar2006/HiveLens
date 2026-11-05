@@ -323,6 +323,9 @@ rules, exports, HTTP validation, workspace isolation, field-data integrity and U
 
 - Thresholds in `hivelens/config.py` are starting points, not universal treatment rules.
 - Unseen frame sides, camera angle, occlusion, debris and image scale affect results.
+- HiveLens expects a sticky-board or brood-frame photo. It does not yet reject unrelated
+  images: a photo with no comb or board yields near-zero measurements, which the rules may
+  still turn into a status. Check the marked-up evidence before acting on any result.
 - Whole-hive stores estimates extrapolate photographed frame sides; weight from the
   field archive is a different measurement and is never presented as honey mass.
 - Imported research observations are historical; neither live telemetry nor our own field trial.
