@@ -357,7 +357,7 @@ async function startGuestDemo() {
   }
   if (!response.ok || data.error) throw new Error(data.error || `Could not start the sample (${response.status}).`);
   attachJob({ id: data.job_id, kind: "inspection", hiveId: data.hive_id, startedAt: Date.now() });
-  $("job-title").textContent = "Running the live sample…";
+  setJobTitle("Running the live sample…");
   renderGuestDemo();
 }
 
@@ -881,10 +881,36 @@ async function startInspection(event) {
 }
 
 /* ── Live Jobs (SSE) ─────────────────────────────────────────────────── */
+// A running clock, a time stamp on every log line and a note after any quiet spell, so a long
+// model call never looks like a frozen page.
+let jobTicker = null;
+let jobClock = { start: 0, lastLog: 0, title: "" };
+const elapsed = () => {
+  const s = Math.max(0, Math.round((Date.now() - jobClock.start) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+function setJobTitle(text) {
+  jobClock.title = text;
+  $("job-title").textContent = jobClock.start ? `${text} · ${elapsed()}` : text;
+}
+function startJobClock() {
+  clearInterval(jobTicker);
+  jobClock = { start: Date.now(), lastLog: Date.now(), title: $("job-title").textContent };
+  jobTicker = setInterval(() => {
+    $("job-title").textContent = `${jobClock.title} · ${elapsed()}`;
+    if (Date.now() - jobClock.lastLog > 10000) logJob("Still working: the models are processing the photo…");
+  }, 1000);
+}
+function stopJobClock() {
+  clearInterval(jobTicker);
+  jobTicker = null;
+}
+
 function logJob(text) {
   const feed = $("job-feed");
   const line = document.createElement("div");
-  line.textContent = text;
+  jobClock.lastLog = Date.now();
+  line.textContent = jobClock.start ? `${elapsed()}  ${text}` : text;
   const nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 50;
   feed.append(line);
   while (feed.childElementCount > 200) feed.firstElementChild.remove();
@@ -898,6 +924,9 @@ function setProgress(pct) {
 }
 
 function finishJob(message, failed = false) {
+  stopJobClock();
+  if (!failed) logJob(`${message}.`);
+  jobClock.start = 0;
   eventStream?.close();
   eventStream = null;
   activeJob = null;
@@ -924,6 +953,8 @@ function attachJob(job) {
   $("job-feed").textContent = "";
   setProgress(0);
   $("job-title").textContent = job.kind === "inspection" ? "Running inspection…" : "Running benchmark…";
+  startJobClock();
+  logJob(job.kind === "inspection" ? "Started. An analysis usually takes one to three minutes." : "Benchmark started.");
   const stream = new EventSource(apiUrl(`/api/jobs/${encodeURIComponent(job.id)}/stream`));
   eventStream = stream;
   stream.onmessage = async (message) => {
@@ -936,14 +967,16 @@ function attachJob(job) {
     }
     if (ev.type === "progress") {
       setProgress(Math.max(0, Math.min(100, Math.round((ev.frac || 0) * 100))));
-      $("job-title").textContent = ev.msg || "Processing…";
+      if (ev.msg && ev.msg !== jobClock.title) logJob(ev.msg);
+      setJobTitle(ev.msg || "Processing…");
     }
     if (ev.type === "log") logJob(ev.text);
     if (ev.type === "agent_event") {
       const a = ev.event || {};
       if (a.type === "claim") logJob(`[${a.verdict.toUpperCase()}] ${a.statement} (${a.reason})`);
       else if (a.type === "thought") logJob(a.text || "");
-      else if (a.type === "tool_call") logJob(`call: ${a.name}()`);
+      else if (a.type === "tool_call") logJob(`Agent calls ${a.name}()`);
+      else if (a.type === "tool_result") logJob(`${a.name}() returned`);
     }
     if (ev.type === "error") finishJob(ev.error || "Analysis failed.", true);
     if (ev.type === "done") {
@@ -974,7 +1007,7 @@ function attachJob(job) {
   };
   stream.onerror = () => {
     job.timingReliable = false;
-    if (activeJob?.id === job.id) $("job-title").textContent = "Reconnecting…";
+    if (activeJob?.id === job.id) setJobTitle("Reconnecting…");
   };
 }
 
