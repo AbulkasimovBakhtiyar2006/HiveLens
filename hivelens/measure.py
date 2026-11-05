@@ -403,6 +403,10 @@ def measure_comb(frame: Image.Image, progress=None) -> CombResult:
         found = {k: f.result() for k, f in futs.items()}
     if progress:
         progress(1, 2)
+    if not found["comb"]:
+        from .photo_check import NotHivePhoto
+        raise NotHivePhoto("SAM 3.1 found no honeycomb in this frame photo. "
+                           "Upload a photo of a beehive frame with its comb visible.")
     tiles, _ = comb_grid(frame.size, found["comb"])
     readable = [i for i, (_, cover) in enumerate(tiles) if cover >= 0.5]
     got = vote.label_tiles(frame, [tiles[i][0] for i in readable])

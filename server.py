@@ -515,7 +515,9 @@ def _run_inspection_job(job_id: str, payload: dict) -> None:
         with _JOBS_LOCK:
             _JOBS[job_id]["status"] = "error"
             _JOBS[job_id]["error"] = f"{type(exc).__name__}: {exc}"
-        _push_job_event(job_id, {"type": "error", "error": f"{type(exc).__name__}: {exc}"})
+        from hivelens.photo_check import NotHivePhoto
+        message = str(exc) if isinstance(exc, NotHivePhoto) else f"{type(exc).__name__}: {exc}"
+        _push_job_event(job_id, {"type": "error", "error": message})
     finally:
         usage.clear_context()
 
@@ -530,6 +532,7 @@ def _run_guest_job(job_id: str, hive_id: str) -> None:
             hive_id, date.today().isoformat(), frames=[frame], frames_in_hive=10,
             note='Live demonstration on one public photograph, not a current colony observation. Hive size is an illustrative assumption.',
             sample_sources={"sources": [guest_demo.SOURCE], "guest_demo": True},
+            check_photos=False,  # the fixed bundled frame photo needs no check
             progress=lambda msg, frac: _push_job_event(job_id, {"type": "progress", "msg": msg, "frac": frac}),
             on_event=lambda event: _push_job_event(job_id, {"type": "agent_event", "event": event}),
         )

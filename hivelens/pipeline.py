@@ -22,6 +22,7 @@ def run_inspection(
     use_agent: bool = True,
     board_tile: int = 600,
     board_refine: bool = True,
+    check_photos: bool = True,
     capture_sources: dict | None = None,
     sample_sources: dict | None = None,
     progress: Callable[[str, float], None] | None = None,
@@ -40,6 +41,15 @@ def run_inspection(
     if not frames and board is None:
         raise ValueError("Add at least one frame photo or a sticky board photo.")
     say = progress or (lambda msg, frac: None)
+
+    if check_photos:
+        # Refuse photos HiveLens cannot measure before any segmentation is spent on them.
+        from . import photo_check
+        say("Muse Spark: checking that each photo is a sticky board or a hive frame", 0.02)
+        if board is not None:
+            photo_check.require(board, "sticky_board", "sticky-board photo")
+        for n, frame in enumerate(frames, 1):
+            photo_check.require(frame, "hive_frame", f"frame photo {n}")
 
     photos: dict[str, Image.Image] = {}
     overlays: dict[str, Image.Image] = {}
